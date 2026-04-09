@@ -1,0 +1,339 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>moqompare — HLS vs MoQ</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg: #0f1117;
+      --surface: #1a1d27;
+      --border: #2a2d3a;
+      --accent-hls: #3b82f6;
+      --accent-moq: #a855f7;
+      --text: #e2e8f0;
+      --text-muted: #64748b;
+      --good: #22c55e;
+      --warn: #f59e0b;
+      --bad: #ef4444;
+    }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'SF Mono', 'Fira Code', monospace;
+      font-size: 13px;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* ── Header ─────────────────────────────────────────────────────────── */
+    header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 12px 20px;
+      border-bottom: 1px solid var(--border);
+      background: var(--surface);
+    }
+
+    header h1 { font-size: 15px; font-weight: 600; letter-spacing: 0.05em; }
+    header h1 span.hls { color: var(--accent-hls); }
+    header h1 span.moq { color: var(--accent-moq); }
+
+    .phase-badge {
+      background: var(--border);
+      color: var(--text-muted);
+      border-radius: 4px;
+      padding: 3px 8px;
+      font-size: 11px;
+    }
+
+    /* ── Impairment bar ──────────────────────────────────────────────────── */
+    .impairment-bar {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 8px 20px;
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      flex-wrap: wrap;
+    }
+
+    .impairment-bar label {
+      color: var(--text-muted);
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+    }
+
+    .impair-btn {
+      background: var(--border);
+      color: var(--text);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      padding: 4px 12px;
+      cursor: pointer;
+      font-family: inherit;
+      font-size: 12px;
+      transition: background 0.15s;
+    }
+    .impair-btn:hover { background: #333649; }
+    .impair-btn.active { border-color: var(--warn); color: var(--warn); }
+
+    #current-profile {
+      margin-left: auto;
+      color: var(--good);
+      font-size: 12px;
+    }
+
+    /* ── Players ─────────────────────────────────────────────────────────── */
+    .players {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 1px;
+      background: var(--border);
+      flex: 1;
+    }
+
+    .player-panel {
+      background: var(--bg);
+      display: flex;
+      flex-direction: column;
+    }
+
+    .player-header {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 10px 16px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .proto-label {
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+    }
+    .proto-label.hls { color: var(--accent-hls); }
+    .proto-label.moq { color: var(--accent-moq); }
+
+    .player-metrics {
+      display: flex;
+      gap: 16px;
+      margin-left: auto;
+    }
+
+    .metric {
+      display: flex;
+      flex-direction: column;
+      align-items: flex-end;
+    }
+    .metric-value {
+      font-size: 15px;
+      font-weight: 600;
+      color: var(--text);
+    }
+    .metric-label {
+      font-size: 10px;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+    }
+
+    .video-area {
+      flex: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: #080a10;
+      min-height: 300px;
+      position: relative;
+    }
+
+    .placeholder-video {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 8px;
+      color: var(--text-muted);
+    }
+
+    .placeholder-video .icon {
+      font-size: 36px;
+      opacity: 0.3;
+    }
+
+    .placeholder-video p {
+      font-size: 12px;
+      opacity: 0.5;
+    }
+
+    .timestamp-overlay {
+      position: absolute;
+      top: 10px;
+      left: 10px;
+      background: rgba(0,0,0,0.6);
+      color: #fff;
+      font-size: 11px;
+      padding: 2px 6px;
+      border-radius: 3px;
+      opacity: 0.4;
+    }
+
+    /* ── Bottom: event timeline ──────────────────────────────────────────── */
+    .timeline-section {
+      border-top: 1px solid var(--border);
+      background: var(--surface);
+      padding: 10px 20px;
+      max-height: 140px;
+    }
+
+    .timeline-section h2 {
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--text-muted);
+      margin-bottom: 8px;
+    }
+
+    .event-list {
+      list-style: none;
+      overflow-y: auto;
+      max-height: 90px;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .event-list li {
+      display: flex;
+      gap: 10px;
+      font-size: 11px;
+      color: var(--text-muted);
+    }
+
+    .event-list li .ts { color: var(--text-muted); min-width: 70px; }
+    .event-list li .ev { color: var(--text); }
+    .event-list li.warn .ev { color: var(--warn); }
+    .event-list li.bad  .ev { color: var(--bad); }
+    .event-list li.good .ev { color: var(--good); }
+  </style>
+</head>
+<body>
+
+  <!-- Header -->
+  <header>
+    <h1>moqompare &mdash; <span class="hls">HLS</span> vs <span class="moq">MoQ</span></h1>
+    <span class="phase-badge">Phase 0 &mdash; skeleton</span>
+  </header>
+
+  <!-- Impairment controls -->
+  <div class="impairment-bar">
+    <label>Impairment:</label>
+    <button class="impair-btn active" onclick="setProfile('baseline')">Baseline</button>
+    <button class="impair-btn" onclick="setProfile('jitter')">Jitter + Loss</button>
+    <button class="impair-btn" onclick="setProfile('squeeze')">Bandwidth Squeeze</button>
+    <button class="impair-btn" onclick="setProfile('outage')">Burst Outage</button>
+    <span id="current-profile">&#9679; baseline</span>
+  </div>
+
+  <!-- Side-by-side players -->
+  <div class="players">
+
+    <!-- HLS -->
+    <div class="player-panel">
+      <div class="player-header">
+        <span class="proto-label hls">HLS</span>
+        <div class="player-metrics">
+          <div class="metric">
+            <span class="metric-value" id="hls-latency">—</span>
+            <span class="metric-label">Latency</span>
+          </div>
+          <div class="metric">
+            <span class="metric-value" id="hls-rebuffers">—</span>
+            <span class="metric-label">Rebuffers</span>
+          </div>
+        </div>
+      </div>
+      <div class="video-area">
+        <!-- Phase 1+: replace with <video> element -->
+        <div class="placeholder-video">
+          <div class="icon">&#9654;</div>
+          <p>HLS player — implemented in Phase 1</p>
+        </div>
+        <div class="timestamp-overlay">--:--:-- UTC</div>
+      </div>
+    </div>
+
+    <!-- MoQ -->
+    <div class="player-panel">
+      <div class="player-header">
+        <span class="proto-label moq">MoQ</span>
+        <div class="player-metrics">
+          <div class="metric">
+            <span class="metric-value" id="moq-latency">—</span>
+            <span class="metric-label">Latency</span>
+          </div>
+          <div class="metric">
+            <span class="metric-value" id="moq-rebuffers">—</span>
+            <span class="metric-label">Rebuffers</span>
+          </div>
+        </div>
+      </div>
+      <div class="video-area">
+        <!-- Phase 2+: replace with MoQ player -->
+        <div class="placeholder-video">
+          <div class="icon">&#9654;</div>
+          <p>MoQ player — implemented in Phase 2</p>
+        </div>
+        <div class="timestamp-overlay">--:--:-- UTC</div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- Event timeline -->
+  <div class="timeline-section">
+    <h2>Event Timeline</h2>
+    <ul class="event-list" id="event-list">
+      <li class="good">
+        <span class="ts" id="start-ts"></span>
+        <span class="ev">system started — phase 0 skeleton</span>
+      </li>
+    </ul>
+  </div>
+
+  <script>
+    // Stamp startup time
+    document.getElementById('start-ts').textContent =
+      new Date().toISOString().slice(11, 19) + ' UTC';
+
+    // Impairment profile switcher (UI only in phase 0)
+    const btns = document.querySelectorAll('.impair-btn');
+    const profileLabel = document.getElementById('current-profile');
+
+    function setProfile(name) {
+      btns.forEach(b => b.classList.remove('active'));
+      const clicked = [...btns].find(b => b.textContent.toLowerCase().startsWith(name));
+      if (clicked) clicked.classList.add('active');
+      profileLabel.textContent = '\u25CF ' + name;
+      addEvent('impairment profile set: ' + name, 'warn');
+    }
+
+    function addEvent(text, type) {
+      const list = document.getElementById('event-list');
+      const li = document.createElement('li');
+      if (type) li.className = type;
+      li.innerHTML =
+        '<span class="ts">' + new Date().toISOString().slice(11, 19) + ' UTC</span>' +
+        '<span class="ev">' + text + '</span>';
+      list.prepend(li);
+    }
+  </script>
+</body>
+</html>

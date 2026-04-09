@@ -1,0 +1,209 @@
+version: "3.9"
+
+# ─────────────────────────────────────────────
+#  moqompare — HLS vs MoQ comparison lab
+#  Phase 0: placeholder skeleton
+# ─────────────────────────────────────────────
+
+networks:
+  moqompare:
+    driver: bridge
+
+volumes:
+  media:   # shared between source → packager → origin + publisher
+
+services:
+
+  # ── 1. Live source generator ──────────────────────────────────────────────
+  source:
+    image: alpine:3.19
+    container_name: moqompare-source
+    restart: unless-stopped
+    command: >
+      sh -c '
+        echo "[source] placeholder: live source generator — not yet implemented";
+        while true; do
+          echo "[source] idle — $(date -u +%H:%M:%S)";
+          sleep ${LOG_INTERVAL:-30};
+        done
+      '
+    volumes:
+      - media:/media/output
+    networks:
+      - moqompare
+    environment:
+      - LOG_LEVEL=${LOG_LEVEL:-info}
+      - SOURCE_FPS=${SOURCE_FPS:-30}
+      - SOURCE_RESOLUTION=${SOURCE_RESOLUTION:-1280x720}
+      - LOG_INTERVAL=${LOG_INTERVAL:-30}
+    healthcheck:
+      test: ["CMD", "sh", "-c", "exit 0"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
+
+  # ── 2. Packager (HLS rolling manifest + media fragments) ──────────────────
+  packager:
+    image: alpine:3.19
+    container_name: moqompare-packager
+    restart: unless-stopped
+    command: >
+      sh -c '
+        echo "[packager] placeholder: HLS + fragment packager — not yet implemented";
+        while true; do
+          echo "[packager] idle — $(date -u +%H:%M:%S)";
+          sleep ${LOG_INTERVAL:-30};
+        done
+      '
+    volumes:
+      - media:/media
+    networks:
+      - moqompare
+    depends_on:
+      source:
+        condition: service_healthy
+    environment:
+      - LOG_LEVEL=${LOG_LEVEL:-info}
+      - HLS_SEGMENT_DURATION=${HLS_SEGMENT_DURATION:-2}
+      - LOG_INTERVAL=${LOG_INTERVAL:-30}
+    healthcheck:
+      test: ["CMD", "sh", "-c", "exit 0"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
+
+  # ── 3. HLS origin (HTTP server) ────────────────────────────────────────────
+  origin:
+    image: nginx:alpine
+    container_name: moqompare-origin
+    restart: unless-stopped
+    volumes:
+      - media:/usr/share/nginx/html/hls:ro
+      - ./infra/nginx/origin.conf:/etc/nginx/conf.d/default.conf:ro
+    networks:
+      - moqompare
+    ports:
+      - "${ORIGIN_PORT:-8080}:80"
+    depends_on:
+      packager:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
+
+  # ── 4. MoQ publisher (fragment watcher → relay) ────────────────────────────
+  publisher:
+    image: alpine:3.19
+    container_name: moqompare-publisher
+    restart: unless-stopped
+    command: >
+      sh -c '
+        echo "[publisher] placeholder: MoQ fragment publisher — not yet implemented";
+        while true; do
+          echo "[publisher] idle — $(date -u +%H:%M:%S)";
+          sleep ${LOG_INTERVAL:-30};
+        done
+      '
+    volumes:
+      - media:/media:ro
+    networks:
+      - moqompare
+    depends_on:
+      packager:
+        condition: service_healthy
+      relay:
+        condition: service_healthy
+    environment:
+      - LOG_LEVEL=${LOG_LEVEL:-info}
+      - RELAY_HOST=${RELAY_HOST:-relay}
+      - RELAY_PORT=${RELAY_PORT:-4443}
+      - LOG_INTERVAL=${LOG_INTERVAL:-30}
+    healthcheck:
+      test: ["CMD", "sh", "-c", "exit 0"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
+
+  # ── 5. MoQ relay ────────────────────────────────────────────────────────────
+  relay:
+    image: alpine:3.19
+    container_name: moqompare-relay
+    restart: unless-stopped
+    command: >
+      sh -c '
+        echo "[relay] placeholder: MoQ relay — not yet implemented";
+        while true; do
+          echo "[relay] idle — $(date -u +%H:%M:%S)";
+          sleep ${LOG_INTERVAL:-30};
+        done
+      '
+    networks:
+      - moqompare
+    ports:
+      - "${RELAY_PORT:-4443}:4443"
+    environment:
+      - LOG_LEVEL=${LOG_LEVEL:-info}
+      - RELAY_PORT=${RELAY_PORT:-4443}
+      - LOG_INTERVAL=${LOG_INTERVAL:-30}
+    healthcheck:
+      test: ["CMD", "sh", "-c", "exit 0"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
+
+  # ── 6. Browser UI ─────────────────────────────────────────────────────────
+  web:
+    image: nginx:alpine
+    container_name: moqompare-web
+    restart: unless-stopped
+    volumes:
+      - ./web/static:/usr/share/nginx/html:ro
+      - ./infra/nginx/web.conf:/etc/nginx/conf.d/default.conf:ro
+    networks:
+      - moqompare
+    ports:
+      - "${WEB_PORT:-3000}:80"
+    depends_on:
+      - origin
+      - relay
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
+
+  # ── 7. Metrics collector ───────────────────────────────────────────────────
+  metrics:
+    image: alpine:3.19
+    container_name: moqompare-metrics
+    restart: unless-stopped
+    command: >
+      sh -c '
+        echo "[metrics] placeholder: metrics collector — not yet implemented";
+        while true; do
+          echo "[metrics] idle — $(date -u +%H:%M:%S)";
+          sleep ${LOG_INTERVAL:-30};
+        done
+      '
+    networks:
+      - moqompare
+    ports:
+      - "${METRICS_PORT:-9090}:9090"
+    environment:
+      - LOG_LEVEL=${LOG_LEVEL:-info}
+      - METRICS_PORT=${METRICS_PORT:-9090}
+      - LOG_INTERVAL=${LOG_INTERVAL:-30}
+    healthcheck:
+      test: ["CMD", "sh", "-c", "exit 0"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
