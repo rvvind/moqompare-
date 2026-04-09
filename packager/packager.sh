@@ -19,6 +19,21 @@ LIST_SIZE="${HLS_LIST_SIZE:-5}"
 
 mkdir -p "${HLS_DIR}"
 
+# ── Write master playlist (required by moq-cli hls ingest) ───────────────
+# moq-cli expects a master playlist with #EXT-X-STREAM-INF variants.
+# We write it once; the media playlist (stream.m3u8) is the sole rendition.
+BITRATE="${SOURCE_BITRATE:-4000k}"
+BITRATE_BPS=$(echo "${BITRATE}" | sed 's/k$/000/;s/M$/000000/')
+RESOLUTION="${SOURCE_RESOLUTION:-1920x1080}"
+cat > "${HLS_DIR}/master.m3u8" << EOF
+#EXTM3U
+#EXT-X-VERSION:6
+#EXT-X-INDEPENDENT-SEGMENTS
+#EXT-X-STREAM-INF:BANDWIDTH=${BITRATE_BPS},RESOLUTION=${RESOLUTION},CODECS="avc1.42c028"
+stream.m3u8
+EOF
+echo "[packager] master playlist written → ${HLS_DIR}/master.m3u8"
+
 # ── Wait for source FIFO ──────────────────────────────────────────────────
 echo "[packager] Waiting for source FIFO at ${PIPE}..."
 while [ ! -p "${PIPE}" ]; do

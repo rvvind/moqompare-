@@ -6,14 +6,21 @@ A local lab that plays the same live video stream over HLS and MoQ side by side,
 
 ---
 
-## Current phase: Phase 1 — HLS baseline
+## Current phase: Phase 3 — Impairment Injection
 
 **What works:**
-- Live video source (FFmpeg testsrc2, 1280×720 @ 30 fps)
-- Visible UTC timestamp overlay ("SRC HH:MM:SS UTC")
-- Rolling fMP4 HLS manifest served over HTTP
-- Browser HLS player (hls.js) with startup time, latency, and stall count
-- MoQ path: placeholder (Phase 2)
+- Live video source (real MP4 files looped, 1280×720 @ 30 fps) with UTC timestamp overlay
+- Rolling fMP4 HLS manifest served over HTTP; hls.js player with startup, latency, stall metrics
+- MoQ path: moq-cli HLS ingest → moq-relay (QUIC/WebTransport) → hang-watch browser player
+- Both HLS and MoQ play the same live source with visible timestamp
+- Resolution and bitrate metrics for both players
+- **Impairment controller**: privileged sidecar applies `tc netem` rules to origin + relay network namespaces
+- Impairment profile buttons in the UI (Baseline, Jitter+Loss, Bandwidth Squeeze, Burst Outage)
+- Event timeline showing impairment transitions and player events
+
+**Known limitations:**
+- MoQ playback has ~4–5 s latency due to HLS ingest burst pattern (2 s segments)
+- `tc netem` requires the Docker VM to support network namespace entry; works on Docker Desktop for Mac
 
 ---
 
@@ -192,8 +199,8 @@ Edit `.env` (copied from `.env.example`) to tune:
 |-------|--------|------|
 | **0** | ✅ | Repo skeleton, Docker Compose, placeholder containers |
 | **1** | ✅ | Live HLS stream in the browser with metrics |
-| **2** | planned | Same stream via MoQ alongside HLS |
-| **3** | planned | Impairment injection and event timeline |
+| **2** | ✅ | Same stream via MoQ alongside HLS |
+| **3** | ✅ | Impairment injection and event timeline |
 | **4** | planned | Full metrics and observability |
 
 See [`docs/phases.md`](docs/phases.md) for detailed acceptance criteria.  

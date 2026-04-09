@@ -24,6 +24,7 @@ services:
     restart: unless-stopped
     volumes:
       - media:/media
+      - ${VIDEOS_DIR:-./videos}:/videos:ro
     networks:
       - moqompare
     environment:
@@ -59,6 +60,8 @@ services:
       - LOG_LEVEL=${LOG_LEVEL:-info}
       - HLS_SEGMENT_DURATION=${HLS_SEGMENT_DURATION:-2}
       - HLS_LIST_SIZE=${HLS_LIST_SIZE:-5}
+      - SOURCE_BITRATE=${SOURCE_BITRATE:-4000k}
+      - SOURCE_RESOLUTION=${SOURCE_RESOLUTION:-1920x1080}
     healthcheck:
       test: ["CMD", "test", "-f", "/media/hls/stream.m3u8"]
       interval: 5s
@@ -73,7 +76,7 @@ services:
     container_name: moqompare-origin
     restart: unless-stopped
     volumes:
-      - media:/usr/share/nginx/html/hls:ro
+      - media:/usr/share/nginx/html:ro
       - ./infra/nginx/origin.conf:/etc/nginx/conf.d/default.conf:ro
     networks:
       - moqompare
@@ -83,37 +86,34 @@ services:
       packager:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost/health"]
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://127.0.0.1/health"]
       interval: 10s
       timeout: 5s
       retries: 3
       start_period: 5s
 
-  # ── 4. MoQ publisher (placeholder) ───────────────────────────────────────
+  # ── 4. MoQ publisher ─────────────────────────────────────────────────────
+  # moq-cli polls the HLS manifest produced by the packager and publishes
+  # each fMP4 segment to the relay using the MoQ protocol over QUIC.
   publisher:
-    image: alpine:3.19
+    image: moqdev/moq-cli
     container_name: moqompare-publisher
     restart: unless-stopped
     command: >
-      sh -c '
-        echo "[publisher] placeholder: MoQ fragment publisher — not yet implemented";
-        while true; do
-          echo "[publisher] idle — $(date -u +%H:%M:%S)";
-          sleep ${LOG_INTERVAL:-30};
-        done
-      '
-    volumes:
-      - media:/media:ro
+      publish
+      --url http://relay:4443
+      --name stream
+      hls
+      --playlist http://origin/hls/master.m3u8
     networks:
       - moqompare
     depends_on:
-      packager:
+      origin:
+        condition: service_healthy
+      relay:
         condition: service_healthy
     environment:
-      - LOG_LEVEL=${LOG_LEVEL:-info}
-      - RELAY_HOST=${RELAY_HOST:-relay}
-      - RELAY_PORT=${RELAY_PORT:-4443}
-      - LOG_INTERVAL=${LOG_INTERVAL:-30}
+      - MOQ_LOG_LEVEL=${LOG_LEVEL:-info}
     healthcheck:
       test: ["CMD", "sh", "-c", "exit 0"]
       interval: 10s
@@ -121,33 +121,33 @@ services:
       retries: 3
       start_period: 5s
 
-  # ── 5. MoQ relay (placeholder) ────────────────────────────────────────────
+  # ── 5. MoQ relay ──────────────────────────────────────────────────────────
+  # Built from source without jemalloc (the published image crashes on
+  # Docker Desktop / macOS due to jemalloc profiling kernel requirements).
+  # Serves QUIC/WebTransport on UDP 4443 and plain HTTP on TCP 4443
+  # (used by clients to fetch the TLS certificate fingerprint).
   relay:
-    image: alpine:3.19
+    build:
+      context: ./relay
     container_name: moqompare-relay
     restart: unless-stopped
-    command: >
-      sh -c '
-        echo "[relay] placeholder: MoQ relay — not yet implemented";
-        while true; do
-          echo "[relay] idle — $(date -u +%H:%M:%S)";
-          sleep ${LOG_INTERVAL:-30};
-        done
-      '
     networks:
       - moqompare
     ports:
-      - "${RELAY_PORT:-4443}:4443"
+      - "${RELAY_PORT:-4443}:4443/udp"
+      - "${RELAY_PORT:-4443}:4443/tcp"
     environment:
-      - LOG_LEVEL=${LOG_LEVEL:-info}
-      - RELAY_PORT=${RELAY_PORT:-4443}
-      - LOG_INTERVAL=${LOG_INTERVAL:-30}
+      - MOQ_SERVER_BIND=[::]:4443
+      - MOQ_SERVER_TLS_GENERATE=localhost
+      - MOQ_WEB_HTTP_LISTEN=[::]:4443
+      - MOQ_AUTH_PUBLIC=
+      - MOQ_LOG_LEVEL=${LOG_LEVEL:-info}
     healthcheck:
-      test: ["CMD", "sh", "-c", "exit 0"]
-      interval: 10s
-      timeout: 5s
-      retries: 3
-      start_period: 5s
+      test: ["CMD-SHELL", "wget -q -O- http://127.0.0.1:4443/certificate.sha256 | grep -qE '^[0-9a-f]{64}'"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 10s
 
   # ── 6. Browser UI ─────────────────────────────────────────────────────────
   # Built image bundles hls.js; nginx proxies /hls/ to origin.
@@ -165,14 +165,41 @@ services:
     depends_on:
       - origin
       - relay
+      - impairment
     healthcheck:
-      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost/health"]
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://127.0.0.1/health"]
       interval: 10s
       timeout: 5s
       retries: 3
       start_period: 10s
 
-  # ── 7. Metrics collector (placeholder) ────────────────────────────────────
+  # ── 7. Impairment controller ──────────────────────────────────────────────
+  # Privileged container with pid:host so it can nsenter into origin/relay
+  # network namespaces and apply tc netem rules without modifying those images.
+  impairment:
+    build:
+      context: ./impairment
+    container_name: moqompare-impairment
+    restart: unless-stopped
+    pid: host
+    privileged: true
+    networks:
+      - moqompare
+    environment:
+      - ORIGIN_CONTAINER=${ORIGIN_CONTAINER:-moqompare-origin}
+      - RELAY_CONTAINER=${RELAY_CONTAINER:-moqompare-relay}
+      - IMPAIR_PORT=8090
+    depends_on:
+      - origin
+      - relay
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O- http://127.0.0.1:8090/status | grep -q profile"]
+      interval: 5s
+      timeout: 3s
+      retries: 6
+      start_period: 5s
+
+  # ── 8. Metrics collector (placeholder) ────────────────────────────────────
   metrics:
     image: alpine:3.19
     container_name: moqompare-metrics

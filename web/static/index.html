@@ -164,16 +164,19 @@
     @keyframes spin { to { transform: rotate(360deg); } }
     .overlay-msg { color: var(--text-muted); font-size: 12px; }
 
-    /* Placeholder for MoQ panel (Phase 2) */
-    .placeholder-video {
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      gap: 8px;
-      color: var(--text-muted);
+    /* hang-watch fills the video area like a <video> element */
+    hang-watch {
+      width: 100%;
+      height: 100%;
+      display: block;
+      background: #080a10;
     }
-    .placeholder-video .icon { font-size: 36px; opacity: 0.3; }
-    .placeholder-video p { font-size: 12px; opacity: 0.5; }
+    hang-watch canvas {
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+      display: block;
+    }
 
     /* ── Error banner ────────────────────────────────────────────────────── */
     #hls-error {
@@ -223,16 +226,16 @@
   <!-- ── Header ──────────────────────────────────────────────────────────── -->
   <header>
     <h1>moqompare &mdash; <span class="hls">HLS</span> vs <span class="moq">MoQ</span></h1>
-    <span class="phase-badge">Phase 1 &mdash; HLS baseline</span>
+    <span class="phase-badge">Phase 3 &mdash; Impairment Injection</span>
   </header>
 
   <!-- ── Impairment bar ──────────────────────────────────────────────────── -->
   <div class="impairment-bar">
     <label>Impairment:</label>
-    <button class="impair-btn active" onclick="setProfile('baseline')">Baseline</button>
-    <button class="impair-btn" onclick="setProfile('jitter')">Jitter + Loss</button>
-    <button class="impair-btn" onclick="setProfile('squeeze')">Bandwidth Squeeze</button>
-    <button class="impair-btn" onclick="setProfile('outage')">Burst Outage</button>
+    <button class="impair-btn active" data-profile="baseline" onclick="setProfile('baseline')">Baseline</button>
+    <button class="impair-btn" data-profile="jitter" onclick="setProfile('jitter')">Jitter + Loss</button>
+    <button class="impair-btn" data-profile="squeeze" onclick="setProfile('squeeze')">Bandwidth Squeeze</button>
+    <button class="impair-btn" data-profile="outage" onclick="setProfile('outage')">Burst Outage</button>
     <span id="current-profile">&#9679; baseline</span>
   </div>
 
@@ -244,6 +247,14 @@
       <div class="player-header">
         <span class="proto-label hls">HLS</span>
         <div class="player-metrics">
+          <div class="metric">
+            <span class="metric-value" id="hls-resolution">—</span>
+            <span class="metric-label">Resolution</span>
+          </div>
+          <div class="metric">
+            <span class="metric-value" id="hls-bitrate">—</span>
+            <span class="metric-label">Bitrate</span>
+          </div>
           <div class="metric">
             <span class="metric-value" id="hls-latency">—</span>
             <span class="metric-label">Latency</span>
@@ -278,6 +289,14 @@
         <span class="proto-label moq">MoQ</span>
         <div class="player-metrics">
           <div class="metric">
+            <span class="metric-value" id="moq-resolution">—</span>
+            <span class="metric-label">Resolution</span>
+          </div>
+          <div class="metric">
+            <span class="metric-value" id="moq-bitrate">—</span>
+            <span class="metric-label">Bitrate</span>
+          </div>
+          <div class="metric">
             <span class="metric-value" id="moq-latency">—</span>
             <span class="metric-label">Latency</span>
           </div>
@@ -292,9 +311,12 @@
         </div>
       </div>
       <div class="video-area">
-        <div class="placeholder-video">
-          <div class="icon">&#9654;</div>
-          <p>MoQ player — implemented in Phase 2</p>
+        <hang-watch id="moq-watch" muted latency="4500">
+          <canvas></canvas>
+        </hang-watch>
+        <div class="video-overlay" id="moq-overlay">
+          <div class="spinner" style="border-top-color:var(--accent-moq)"></div>
+          <span class="overlay-msg" id="moq-status">Connecting to MoQ relay…</span>
         </div>
       </div>
     </div>
@@ -335,14 +357,41 @@
       setText('hls-status', msg);
     }
 
-    // ── Impairment UI (Phase 3 wires up the backend) ───────────────────────
+    // ── Impairment UI ──────────────────────────────────────────────────────
     const impairBtns = document.querySelectorAll('.impair-btn');
-    function setProfile(name) {
+    const profileEl  = document.getElementById('current-profile');
+
+    function _setActiveBtn(name) {
       impairBtns.forEach(b => b.classList.remove('active'));
-      const btn = [...impairBtns].find(b => b.textContent.toLowerCase().startsWith(name));
-      if (btn) btn.classList.add('active');
-      document.getElementById('current-profile').textContent = '\u25CF ' + name;
-      addEvent('impairment profile set: ' + name, 'warn');
+      impairBtns.forEach(b => {
+        if (b.dataset.profile === name) b.classList.add('active');
+      });
+      profileEl.textContent = '\u25CF ' + name;
+      profileEl.style.color = name === 'baseline' ? 'var(--good)' : 'var(--warn)';
+    }
+
+    function setProfile(name) {
+      _setActiveBtn(name);
+      fetch('/impair/' + name, { method: 'POST' })
+        .then(r => r.json())
+        .then(function (d) {
+          if (d.ok) {
+            const label = { baseline: 'cleared', jitter: '30 ms ±20 ms + 1% loss',
+                            squeeze: '500 kbps cap', outage: '100% loss / 5 s' }[name] || name;
+            addEvent('impairment \u2192 ' + name + ' (' + label + ')', name === 'baseline' ? 'good' : 'warn');
+            if (d.auto_clear_secs) {
+              setTimeout(function () {
+                _setActiveBtn('baseline');
+                addEvent('impairment \u2192 baseline (outage cleared)', 'good');
+              }, d.auto_clear_secs * 1000);
+            }
+          } else {
+            addEvent('impairment error: ' + (d.errors || []).join('; '), 'bad');
+          }
+        })
+        .catch(function (e) {
+          addEvent('impairment request failed: ' + e.message, 'bad');
+        });
     }
 
     // ── HLS player ─────────────────────────────────────────────────────────
@@ -399,6 +448,11 @@
           startupRecorded = true;
           addEvent('HLS playing — startup ' + ms + 'ms', 'good');
         }
+
+        // resolution available once first frame is decoded
+        if (video.videoWidth) {
+          setText('hls-resolution', video.videoWidth + '×' + video.videoHeight);
+        }
       });
 
       // ── Stall / waiting ────────────────────────────────────────────────
@@ -410,13 +464,37 @@
         addEvent('HLS stall #' + stallCount, 'warn');
       });
 
-      // ── Latency + time polling ─────────────────────────────────────────
+      // ── Bitrate computed from segment payload ──────────────────────────
+      function fmtBitrate(bps) {
+        if (bps >= 1000000) return (bps / 1000000).toFixed(1) + ' Mb/s';
+        return Math.round(bps / 1000) + ' kb/s';
+      }
+
+      hls.on(Hls.Events.FRAG_LOADED, function (_, data) {
+        const bytes = data.frag.stats.total;
+        const dur   = data.frag.duration;
+        if (dur > 0 && bytes > 0) {
+          setText('hls-bitrate', fmtBitrate((bytes * 8) / dur));
+        }
+      });
+
+      // ── ABR level switch ───────────────────────────────────────────────
+      hls.on(Hls.Events.LEVEL_SWITCHED, function (_, data) {
+        const lvl = hls.levels[data.level];
+        if (lvl && lvl.bitrate) {
+          addEvent('HLS level → ' + data.level + ' (' + fmtBitrate(lvl.bitrate) + ')', 'good');
+        }
+      });
+
+      // ── Latency + resolution polling ───────────────────────────────────
       setInterval(function () {
         if (video.paused || video.readyState < 2) return;
 
-        // hls.latency is the gap between live edge and current playback (seconds)
         if (typeof hls.latency === 'number' && hls.latency > 0) {
           setText('hls-latency', hls.latency.toFixed(1) + 's');
+        }
+        if (video.videoWidth) {
+          setText('hls-resolution', video.videoWidth + '×' + video.videoHeight);
         }
       }, 1000);
 
@@ -464,6 +542,69 @@
 
     // ── Startup event ──────────────────────────────────────────────────────
     addEvent('page loaded — connecting to ' + HLS_URL, 'good');
+  </script>
+
+  <!-- MoQ player (hang-watch custom element, loaded as ES module) -->
+  <!-- MoQ player (hang-watch custom element, loaded as ES module) -->
+  <script type="module" src="/hang.js"></script>
+  <script type="module">
+    await customElements.whenDefined('hang-watch');
+
+    const MOQ_URL  = 'http://' + window.location.hostname + ':4443';
+    const MOQ_NAME = 'stream';
+
+    const watchEl    = document.getElementById('moq-watch');
+    const moqOverlay = document.getElementById('moq-overlay');
+
+    watchEl.url  = new URL(MOQ_URL);
+    watchEl.name = MOQ_NAME;
+
+    addEvent('MoQ connecting to ' + MOQ_URL + ' / ' + MOQ_NAME);
+
+    let moqStartTs     = performance.now();
+    let moqStartupDone = false;
+    let moqStallCount  = 0;
+    let prevBroad      = null;
+
+    // ── Poll broadcast status and canvas metrics ──────────────────────────
+    setInterval(function () {
+      const instance = watchEl.active ? watchEl.active.peek() : undefined;
+      if (!instance) return;
+
+      const broad = instance.broadcast.status
+        ? instance.broadcast.status.peek()
+        : undefined;
+
+      if (broad !== prevBroad) {
+        prevBroad = broad;
+
+        if (broad === 'live') {
+          moqOverlay.classList.add('hidden');
+          if (!moqStartupDone) {
+            moqStartupDone = true;
+            const ms = (performance.now() - moqStartTs).toFixed(0);
+            setText('moq-startup', ms + 'ms');
+            addEvent('MoQ live — startup ' + ms + 'ms', 'good');
+          }
+        } else if (broad === 'loading') {
+          moqOverlay.classList.remove('hidden');
+          setText('moq-status', 'Buffering…');
+          if (moqStartupDone) {
+            moqStallCount++;
+            setText('moq-stalls', moqStallCount);
+            addEvent('MoQ stall #' + moqStallCount, 'warn');
+          }
+        } else if (broad === 'offline') {
+          setText('moq-status', 'Waiting for broadcast…');
+        }
+      }
+
+      // Resolution from canvas once video is rendering
+      const canvas = watchEl.querySelector('canvas');
+      if (canvas && canvas.width > 1) {
+        setText('moq-resolution', canvas.width + '×' + canvas.height);
+      }
+    }, 500);
   </script>
 </body>
 </html>
