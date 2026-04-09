@@ -1,6 +1,6 @@
 # ─────────────────────────────────────────────
 #  moqompare — HLS vs MoQ comparison lab
-#  Phase 0: placeholder skeleton
+#  Phase 1: live source + HLS baseline
 # ─────────────────────────────────────────────
 
 networks:
@@ -8,52 +8,46 @@ networks:
     driver: bridge
 
 volumes:
-  media:   # shared between source → packager → origin + publisher
+  # Shared between source → packager → origin + publisher
+  media:
 
 services:
 
   # ── 1. Live source generator ──────────────────────────────────────────────
+  # Generates testsrc2 video with UTC timestamp overlay.
+  # Writes MPEG-TS into /media/source.pipe (named pipe).
+  # Healthcheck: FIFO exists → packager can connect.
   source:
-    image: alpine:3.19
+    build:
+      context: ./source
     container_name: moqompare-source
     restart: unless-stopped
-    command: >
-      sh -c '
-        echo "[source] placeholder: live source generator — not yet implemented";
-        while true; do
-          echo "[source] idle — $(date -u +%H:%M:%S)";
-          sleep ${LOG_INTERVAL:-30};
-        done
-      '
     volumes:
-      - media:/media/output
+      - media:/media
     networks:
       - moqompare
     environment:
       - LOG_LEVEL=${LOG_LEVEL:-info}
       - SOURCE_FPS=${SOURCE_FPS:-30}
       - SOURCE_RESOLUTION=${SOURCE_RESOLUTION:-1280x720}
-      - LOG_INTERVAL=${LOG_INTERVAL:-30}
+      - SOURCE_BITRATE=${SOURCE_BITRATE:-1500k}
+      - HLS_SEGMENT_DURATION=${HLS_SEGMENT_DURATION:-2}
     healthcheck:
-      test: ["CMD", "sh", "-c", "exit 0"]
-      interval: 10s
-      timeout: 5s
-      retries: 3
-      start_period: 5s
+      test: ["CMD", "test", "-p", "/media/source.pipe"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 10s
 
-  # ── 2. Packager (HLS rolling manifest + media fragments) ──────────────────
+  # ── 2. HLS packager ───────────────────────────────────────────────────────
+  # Reads MPEG-TS from /media/source.pipe.
+  # Muxes into fMP4 HLS segments at /media/hls/.
+  # Healthcheck: stream.m3u8 exists (first segment written).
   packager:
-    image: alpine:3.19
+    build:
+      context: ./packager
     container_name: moqompare-packager
     restart: unless-stopped
-    command: >
-      sh -c '
-        echo "[packager] placeholder: HLS + fragment packager — not yet implemented";
-        while true; do
-          echo "[packager] idle — $(date -u +%H:%M:%S)";
-          sleep ${LOG_INTERVAL:-30};
-        done
-      '
     volumes:
       - media:/media
     networks:
@@ -64,15 +58,16 @@ services:
     environment:
       - LOG_LEVEL=${LOG_LEVEL:-info}
       - HLS_SEGMENT_DURATION=${HLS_SEGMENT_DURATION:-2}
-      - LOG_INTERVAL=${LOG_INTERVAL:-30}
+      - HLS_LIST_SIZE=${HLS_LIST_SIZE:-5}
     healthcheck:
-      test: ["CMD", "sh", "-c", "exit 0"]
-      interval: 10s
-      timeout: 5s
-      retries: 3
-      start_period: 5s
+      test: ["CMD", "test", "-f", "/media/hls/stream.m3u8"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 15s
 
-  # ── 3. HLS origin (HTTP server) ────────────────────────────────────────────
+  # ── 3. HLS HTTP origin ────────────────────────────────────────────────────
+  # nginx serving /media/hls/ at /hls/.
   origin:
     image: nginx:alpine
     container_name: moqompare-origin
@@ -94,7 +89,7 @@ services:
       retries: 3
       start_period: 5s
 
-  # ── 4. MoQ publisher (fragment watcher → relay) ────────────────────────────
+  # ── 4. MoQ publisher (placeholder) ───────────────────────────────────────
   publisher:
     image: alpine:3.19
     container_name: moqompare-publisher
@@ -114,8 +109,6 @@ services:
     depends_on:
       packager:
         condition: service_healthy
-      relay:
-        condition: service_healthy
     environment:
       - LOG_LEVEL=${LOG_LEVEL:-info}
       - RELAY_HOST=${RELAY_HOST:-relay}
@@ -128,7 +121,7 @@ services:
       retries: 3
       start_period: 5s
 
-  # ── 5. MoQ relay ────────────────────────────────────────────────────────────
+  # ── 5. MoQ relay (placeholder) ────────────────────────────────────────────
   relay:
     image: alpine:3.19
     container_name: moqompare-relay
@@ -157,12 +150,13 @@ services:
       start_period: 5s
 
   # ── 6. Browser UI ─────────────────────────────────────────────────────────
+  # Built image bundles hls.js; nginx proxies /hls/ to origin.
   web:
-    image: nginx:alpine
+    build:
+      context: ./web
     container_name: moqompare-web
     restart: unless-stopped
     volumes:
-      - ./web/static:/usr/share/nginx/html:ro
       - ./infra/nginx/web.conf:/etc/nginx/conf.d/default.conf:ro
     networks:
       - moqompare
@@ -176,9 +170,9 @@ services:
       interval: 10s
       timeout: 5s
       retries: 3
-      start_period: 5s
+      start_period: 10s
 
-  # ── 7. Metrics collector ───────────────────────────────────────────────────
+  # ── 7. Metrics collector (placeholder) ────────────────────────────────────
   metrics:
     image: alpine:3.19
     container_name: moqompare-metrics

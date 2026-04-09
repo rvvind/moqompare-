@@ -39,11 +39,9 @@
       border-bottom: 1px solid var(--border);
       background: var(--surface);
     }
-
     header h1 { font-size: 15px; font-weight: 600; letter-spacing: 0.05em; }
     header h1 span.hls { color: var(--accent-hls); }
     header h1 span.moq { color: var(--accent-moq); }
-
     .phase-badge {
       background: var(--border);
       color: var(--text-muted);
@@ -62,14 +60,12 @@
       border-bottom: 1px solid var(--border);
       flex-wrap: wrap;
     }
-
     .impairment-bar label {
       color: var(--text-muted);
       font-size: 11px;
       text-transform: uppercase;
       letter-spacing: 0.08em;
     }
-
     .impair-btn {
       background: var(--border);
       color: var(--text);
@@ -83,12 +79,7 @@
     }
     .impair-btn:hover { background: #333649; }
     .impair-btn.active { border-color: var(--warn); color: var(--warn); }
-
-    #current-profile {
-      margin-left: auto;
-      color: var(--good);
-      font-size: 12px;
-    }
+    #current-profile { margin-left: auto; color: var(--good); font-size: 12px; }
 
     /* ── Players ─────────────────────────────────────────────────────────── */
     .players {
@@ -98,13 +89,11 @@
       background: var(--border);
       flex: 1;
     }
-
     .player-panel {
       background: var(--bg);
       display: flex;
       flex-direction: column;
     }
-
     .player-header {
       display: flex;
       align-items: center;
@@ -112,7 +101,6 @@
       padding: 10px 16px;
       border-bottom: 1px solid var(--border);
     }
-
     .proto-label {
       font-size: 12px;
       font-weight: 700;
@@ -122,22 +110,14 @@
     .proto-label.hls { color: var(--accent-hls); }
     .proto-label.moq { color: var(--accent-moq); }
 
+    /* ── Metrics row ─────────────────────────────────────────────────────── */
     .player-metrics {
       display: flex;
       gap: 16px;
       margin-left: auto;
     }
-
-    .metric {
-      display: flex;
-      flex-direction: column;
-      align-items: flex-end;
-    }
-    .metric-value {
-      font-size: 15px;
-      font-weight: 600;
-      color: var(--text);
-    }
+    .metric { display: flex; flex-direction: column; align-items: flex-end; }
+    .metric-value { font-size: 15px; font-weight: 600; color: var(--text); }
     .metric-label {
       font-size: 10px;
       color: var(--text-muted);
@@ -145,16 +125,46 @@
       letter-spacing: 0.06em;
     }
 
+    /* ── Video area ──────────────────────────────────────────────────────── */
     .video-area {
       flex: 1;
+      position: relative;
+      background: #080a10;
+      min-height: 300px;
       display: flex;
       align-items: center;
       justify-content: center;
-      background: #080a10;
-      min-height: 300px;
-      position: relative;
+    }
+    video {
+      width: 100%;
+      height: 100%;
+      display: block;
+      object-fit: contain;
     }
 
+    /* Shown while video hasn't started yet */
+    .video-overlay {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      pointer-events: none;
+    }
+    .video-overlay.hidden { display: none; }
+    .spinner {
+      width: 32px; height: 32px;
+      border: 3px solid var(--border);
+      border-top-color: var(--accent-hls);
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .overlay-msg { color: var(--text-muted); font-size: 12px; }
+
+    /* Placeholder for MoQ panel (Phase 2) */
     .placeholder-video {
       display: flex;
       flex-direction: column;
@@ -162,37 +172,29 @@
       gap: 8px;
       color: var(--text-muted);
     }
+    .placeholder-video .icon { font-size: 36px; opacity: 0.3; }
+    .placeholder-video p { font-size: 12px; opacity: 0.5; }
 
-    .placeholder-video .icon {
-      font-size: 36px;
-      opacity: 0.3;
-    }
-
-    .placeholder-video p {
-      font-size: 12px;
-      opacity: 0.5;
-    }
-
-    .timestamp-overlay {
+    /* ── Error banner ────────────────────────────────────────────────────── */
+    #hls-error {
+      display: none;
       position: absolute;
-      top: 10px;
-      left: 10px;
-      background: rgba(0,0,0,0.6);
-      color: #fff;
+      bottom: 10px; left: 10px; right: 10px;
+      background: rgba(239,68,68,0.15);
+      border: 1px solid var(--bad);
+      color: var(--bad);
+      padding: 6px 10px;
+      border-radius: 4px;
       font-size: 11px;
-      padding: 2px 6px;
-      border-radius: 3px;
-      opacity: 0.4;
     }
 
-    /* ── Bottom: event timeline ──────────────────────────────────────────── */
+    /* ── Event timeline ──────────────────────────────────────────────────── */
     .timeline-section {
       border-top: 1px solid var(--border);
       background: var(--surface);
       padding: 10px 20px;
       max-height: 140px;
     }
-
     .timeline-section h2 {
       font-size: 11px;
       text-transform: uppercase;
@@ -200,7 +202,6 @@
       color: var(--text-muted);
       margin-bottom: 8px;
     }
-
     .event-list {
       list-style: none;
       overflow-y: auto;
@@ -209,14 +210,7 @@
       flex-direction: column;
       gap: 4px;
     }
-
-    .event-list li {
-      display: flex;
-      gap: 10px;
-      font-size: 11px;
-      color: var(--text-muted);
-    }
-
+    .event-list li { display: flex; gap: 10px; font-size: 11px; }
     .event-list li .ts { color: var(--text-muted); min-width: 70px; }
     .event-list li .ev { color: var(--text); }
     .event-list li.warn .ev { color: var(--warn); }
@@ -226,13 +220,13 @@
 </head>
 <body>
 
-  <!-- Header -->
+  <!-- ── Header ──────────────────────────────────────────────────────────── -->
   <header>
     <h1>moqompare &mdash; <span class="hls">HLS</span> vs <span class="moq">MoQ</span></h1>
-    <span class="phase-badge">Phase 0 &mdash; skeleton</span>
+    <span class="phase-badge">Phase 1 &mdash; HLS baseline</span>
   </header>
 
-  <!-- Impairment controls -->
+  <!-- ── Impairment bar ──────────────────────────────────────────────────── -->
   <div class="impairment-bar">
     <label>Impairment:</label>
     <button class="impair-btn active" onclick="setProfile('baseline')">Baseline</button>
@@ -242,10 +236,10 @@
     <span id="current-profile">&#9679; baseline</span>
   </div>
 
-  <!-- Side-by-side players -->
+  <!-- ── Side-by-side players ────────────────────────────────────────────── -->
   <div class="players">
 
-    <!-- HLS -->
+    <!-- HLS panel -->
     <div class="player-panel">
       <div class="player-header">
         <span class="proto-label hls">HLS</span>
@@ -255,22 +249,30 @@
             <span class="metric-label">Latency</span>
           </div>
           <div class="metric">
-            <span class="metric-value" id="hls-rebuffers">—</span>
-            <span class="metric-label">Rebuffers</span>
+            <span class="metric-value" id="hls-startup">—</span>
+            <span class="metric-label">Startup</span>
+          </div>
+          <div class="metric">
+            <span class="metric-value" id="hls-stalls">0</span>
+            <span class="metric-label">Stalls</span>
           </div>
         </div>
       </div>
       <div class="video-area">
-        <!-- Phase 1+: replace with <video> element -->
-        <div class="placeholder-video">
-          <div class="icon">&#9654;</div>
-          <p>HLS player — implemented in Phase 1</p>
+        <video id="hls-video" muted playsinline></video>
+
+        <!-- spinner shown while buffering -->
+        <div class="video-overlay" id="hls-overlay">
+          <div class="spinner"></div>
+          <span class="overlay-msg" id="hls-status">Connecting to HLS stream…</span>
         </div>
-        <div class="timestamp-overlay">--:--:-- UTC</div>
+
+        <!-- error banner -->
+        <div id="hls-error"></div>
       </div>
     </div>
 
-    <!-- MoQ -->
+    <!-- MoQ panel (placeholder — Phase 2) -->
     <div class="player-panel">
       <div class="player-header">
         <span class="proto-label moq">MoQ</span>
@@ -280,60 +282,188 @@
             <span class="metric-label">Latency</span>
           </div>
           <div class="metric">
-            <span class="metric-value" id="moq-rebuffers">—</span>
-            <span class="metric-label">Rebuffers</span>
+            <span class="metric-value" id="moq-startup">—</span>
+            <span class="metric-label">Startup</span>
+          </div>
+          <div class="metric">
+            <span class="metric-value" id="moq-stalls">—</span>
+            <span class="metric-label">Stalls</span>
           </div>
         </div>
       </div>
       <div class="video-area">
-        <!-- Phase 2+: replace with MoQ player -->
         <div class="placeholder-video">
           <div class="icon">&#9654;</div>
           <p>MoQ player — implemented in Phase 2</p>
         </div>
-        <div class="timestamp-overlay">--:--:-- UTC</div>
       </div>
     </div>
 
   </div>
 
-  <!-- Event timeline -->
+  <!-- ── Event timeline ──────────────────────────────────────────────────── -->
   <div class="timeline-section">
     <h2>Event Timeline</h2>
-    <ul class="event-list" id="event-list">
-      <li class="good">
-        <span class="ts" id="start-ts"></span>
-        <span class="ev">system started — phase 0 skeleton</span>
-      </li>
-    </ul>
+    <ul class="event-list" id="event-list"></ul>
   </div>
 
+  <script src="/hls.min.js"></script>
   <script>
-    // Stamp startup time
-    document.getElementById('start-ts').textContent =
-      new Date().toISOString().slice(11, 19) + ' UTC';
-
-    // Impairment profile switcher (UI only in phase 0)
-    const btns = document.querySelectorAll('.impair-btn');
-    const profileLabel = document.getElementById('current-profile');
-
-    function setProfile(name) {
-      btns.forEach(b => b.classList.remove('active'));
-      const clicked = [...btns].find(b => b.textContent.toLowerCase().startsWith(name));
-      if (clicked) clicked.classList.add('active');
-      profileLabel.textContent = '\u25CF ' + name;
-      addEvent('impairment profile set: ' + name, 'warn');
+    // ── Helpers ────────────────────────────────────────────────────────────
+    function now() {
+      return new Date().toISOString().slice(11, 19) + ' UTC';
     }
 
     function addEvent(text, type) {
       const list = document.getElementById('event-list');
-      const li = document.createElement('li');
+      const li   = document.createElement('li');
       if (type) li.className = type;
       li.innerHTML =
-        '<span class="ts">' + new Date().toISOString().slice(11, 19) + ' UTC</span>' +
+        '<span class="ts">' + now() + '</span>' +
         '<span class="ev">' + text + '</span>';
       list.prepend(li);
+      // cap timeline at 50 entries
+      while (list.children.length > 50) list.removeChild(list.lastChild);
     }
+
+    function setText(id, val) {
+      const el = document.getElementById(id);
+      if (el) el.textContent = val;
+    }
+
+    function setStatus(msg) {
+      setText('hls-status', msg);
+    }
+
+    // ── Impairment UI (Phase 3 wires up the backend) ───────────────────────
+    const impairBtns = document.querySelectorAll('.impair-btn');
+    function setProfile(name) {
+      impairBtns.forEach(b => b.classList.remove('active'));
+      const btn = [...impairBtns].find(b => b.textContent.toLowerCase().startsWith(name));
+      if (btn) btn.classList.add('active');
+      document.getElementById('current-profile').textContent = '\u25CF ' + name;
+      addEvent('impairment profile set: ' + name, 'warn');
+    }
+
+    // ── HLS player ─────────────────────────────────────────────────────────
+    const HLS_URL = '/hls/stream.m3u8';
+    const video   = document.getElementById('hls-video');
+    const overlay = document.getElementById('hls-overlay');
+    const errEl   = document.getElementById('hls-error');
+
+    let startTs   = null;   // performance.now() when play() was called
+    let stallCount = 0;
+    let startupRecorded = false;
+
+    if (!Hls.isSupported()) {
+      // Fallback: Safari native HLS
+      if (video.canPlayType('application/vnd.apple.mpegurl')) {
+        video.src = HLS_URL;
+        video.play();
+        addEvent('using native HLS (Safari)', 'warn');
+      } else {
+        setStatus('HLS not supported in this browser');
+        addEvent('HLS not supported', 'bad');
+      }
+    } else {
+      const hls = new Hls({
+        liveSyncDurationCount:      3,   // stay ~3 segments behind live edge
+        liveMaxLatencyDurationCount: 6,
+        maxBufferLength:            10,
+        enableWorker:               true,
+        lowLatencyMode:             false,
+      });
+
+      hls.loadSource(HLS_URL);
+      hls.attachMedia(video);
+
+      // ── Startup ────────────────────────────────────────────────────────
+      hls.on(Hls.Events.MANIFEST_PARSED, function (_, data) {
+        addEvent('manifest parsed — ' + data.levels.length + ' level(s)', 'good');
+        setStatus('Buffering…');
+        startTs = performance.now();
+        video.play().catch(function (e) {
+          addEvent('autoplay blocked: ' + e.message, 'warn');
+          setStatus('Click video to start playback');
+        });
+      });
+
+      // ── First frame ────────────────────────────────────────────────────
+      video.addEventListener('playing', function () {
+        overlay.classList.add('hidden');
+        errEl.style.display = 'none';
+
+        if (!startupRecorded && startTs !== null) {
+          const ms = (performance.now() - startTs).toFixed(0);
+          setText('hls-startup', ms + 'ms');
+          startupRecorded = true;
+          addEvent('HLS playing — startup ' + ms + 'ms', 'good');
+        }
+      });
+
+      // ── Stall / waiting ────────────────────────────────────────────────
+      video.addEventListener('waiting', function () {
+        overlay.classList.remove('hidden');
+        setStatus('Rebuffering…');
+        stallCount++;
+        setText('hls-stalls', stallCount);
+        addEvent('HLS stall #' + stallCount, 'warn');
+      });
+
+      // ── Latency + time polling ─────────────────────────────────────────
+      setInterval(function () {
+        if (video.paused || video.readyState < 2) return;
+
+        // hls.latency is the gap between live edge and current playback (seconds)
+        if (typeof hls.latency === 'number' && hls.latency > 0) {
+          setText('hls-latency', hls.latency.toFixed(1) + 's');
+        }
+      }, 1000);
+
+      // ── Errors ─────────────────────────────────────────────────────────
+      hls.on(Hls.Events.ERROR, function (_, data) {
+        if (data.fatal) {
+          addEvent('HLS fatal: ' + data.details, 'bad');
+          errEl.textContent = 'Error: ' + data.details + ' — retrying…';
+          errEl.style.display = 'block';
+          overlay.classList.remove('hidden');
+          setStatus('Error — retrying…');
+
+          switch (data.type) {
+            case Hls.ErrorTypes.NETWORK_ERROR:
+              hls.startLoad();
+              break;
+            case Hls.ErrorTypes.MEDIA_ERROR:
+              hls.recoverMediaError();
+              break;
+            default:
+              // unrecoverable — reload after 3 s
+              setTimeout(function () { window.location.reload(); }, 3000);
+          }
+        } else {
+          // non-fatal: count stalls on media errors
+          if (data.type === Hls.ErrorTypes.MEDIA_ERROR) {
+            stallCount++;
+            setText('hls-stalls', stallCount);
+            addEvent('HLS media error: ' + data.details, 'warn');
+          }
+        }
+      });
+
+      // ── Segment load logging ───────────────────────────────────────────
+      let segCount = 0;
+      hls.on(Hls.Events.FRAG_LOADED, function (_, data) {
+        segCount++;
+        // log every 10th segment to keep timeline readable
+        if (segCount % 10 === 0) {
+          const kb = (data.frag.stats.total / 1024).toFixed(0);
+          addEvent('HLS seg #' + segCount + ' loaded (' + kb + ' KB)', 'good');
+        }
+      });
+    }
+
+    // ── Startup event ──────────────────────────────────────────────────────
+    addEvent('page loaded — connecting to ' + HLS_URL, 'good');
   </script>
 </body>
 </html>
