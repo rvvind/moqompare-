@@ -138,7 +138,7 @@ services:
       - "${RELAY_PORT:-4443}:4443/tcp"
     environment:
       - MOQ_SERVER_BIND=[::]:4443
-      - MOQ_SERVER_TLS_GENERATE=localhost
+      - MOQ_SERVER_TLS_GENERATE=localhost,relay
       - MOQ_WEB_HTTP_LISTEN=[::]:4443
       - MOQ_AUTH_PUBLIC=
       - MOQ_LOG_LEVEL=${LOG_LEVEL:-info}
