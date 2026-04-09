@@ -43,30 +43,19 @@ _outage_timer: threading.Timer | None = None
 # ── tc helpers ────────────────────────────────────────────────────────────────
 
 def _pid_of(container: str) -> str | None:
-    """Read the init PID of a container from /proc (pid:host namespace)."""
-    # Each container's init process has its hostname in /proc/<pid>/environ.
-    # Simpler: scan /proc/*/status for the exact comm and match via docker.
-    # Cleanest reliable path: use /proc/<pid>/environ to find HOSTNAME=<container>.
-    # We search /proc for the container name in the cgroup path.
+    """Get the init PID of a container via `docker inspect`."""
     try:
-        for pid in os.listdir("/proc"):
-            if not pid.isdigit():
-                continue
-            cgroup = f"/proc/{pid}/cgroup"
-            try:
-                with open(cgroup) as f:
-                    if container in f.read():
-                        # Verify it's the init process (ppid 0 or 1 from outside)
-                        status = f"/proc/{pid}/status"
-                        with open(status) as sf:
-                            for line in sf:
-                                if line.startswith("PPid:"):
-                                    ppid = int(line.split()[1])
-                                    if ppid <= 2:  # init or kthread parent
-                                        return pid
-                                    break
-            except (PermissionError, FileNotFoundError):
-                continue
+        r = subprocess.run(
+            ["docker", "inspect", "--format", "{{.State.Pid}}", container],
+            capture_output=True, text=True, timeout=5,
+        )
+        if r.returncode == 0:
+            pid = r.stdout.strip()
+            if pid and pid != "0":
+                return pid
+            print(f"[impair] _pid_of({container}): container not running (pid=0)")
+        else:
+            print(f"[impair] _pid_of({container}): docker inspect failed: {r.stderr.strip()}")
     except Exception as e:
         print(f"[impair] _pid_of({container}) error: {e}")
     return None

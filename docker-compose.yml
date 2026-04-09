@@ -184,6 +184,8 @@ services:
     restart: unless-stopped
     pid: host
     privileged: true
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
     networks:
       - moqompare
     environment:
