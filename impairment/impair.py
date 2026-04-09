@@ -168,5 +168,14 @@ if __name__ == "__main__":
     port = int(os.environ.get("IMPAIR_PORT", 8090))
     print(f"[impair] listening on :{port}")
     print(f"[impair] targets: {TARGETS}")
+
+    # Startup smoke-test: verify docker socket is reachable and resolve PIDs.
+    for t in TARGETS:
+        pid = _pid_of(t)
+        if pid:
+            print(f"[impair] startup: {t} → pid {pid} OK")
+        else:
+            print(f"[impair] startup: {t} → pid NOT FOUND (socket missing or container not running)")
+
     server = HTTPServer(("0.0.0.0", port), Handler)
     server.serve_forever()
