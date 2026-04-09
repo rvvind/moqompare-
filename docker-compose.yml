@@ -96,7 +96,8 @@ services:
   # moq-cli polls the HLS manifest produced by the packager and publishes
   # each fMP4 segment to the relay using the MoQ protocol over QUIC.
   publisher:
-    image: moqdev/moq-cli
+    build:
+      context: ./publisher
     container_name: moqompare-publisher
     restart: unless-stopped
     command: >
