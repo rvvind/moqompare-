@@ -166,6 +166,7 @@ services:
       - origin
       - relay
       - impairment
+      - metrics
     healthcheck:
       test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://127.0.0.1/health"]
       interval: 10s
@@ -199,29 +200,22 @@ services:
       retries: 6
       start_period: 5s
 
-  # ── 8. Metrics collector (placeholder) ────────────────────────────────────
+  # ── 8. Metrics collector ──────────────────────────────────────────────────
+  # Receives JSON metric reports from the browser (POST /report).
+  # Exposes Prometheus metrics at GET /metrics and JSON snapshot at /snapshot.
   metrics:
-    image: alpine:3.19
+    build:
+      context: ./metrics
     container_name: moqompare-metrics
     restart: unless-stopped
-    command: >
-      sh -c '
-        echo "[metrics] placeholder: metrics collector — not yet implemented";
-        while true; do
-          echo "[metrics] idle — $(date -u +%H:%M:%S)";
-          sleep ${LOG_INTERVAL:-30};
-        done
-      '
     networks:
       - moqompare
     ports:
       - "${METRICS_PORT:-9090}:9090"
     environment:
-      - LOG_LEVEL=${LOG_LEVEL:-info}
       - METRICS_PORT=${METRICS_PORT:-9090}
-      - LOG_INTERVAL=${LOG_INTERVAL:-30}
     healthcheck:
-      test: ["CMD", "sh", "-c", "exit 0"]
+      test: ["CMD-SHELL", "wget -q -O- http://127.0.0.1:9090/health | grep -q ok"]
       interval: 10s
       timeout: 5s
       retries: 3
