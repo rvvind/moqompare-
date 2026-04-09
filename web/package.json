@@ -1,0 +1,16 @@
+{
+  "name": "moqompare-web",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "node build.mjs"
+  },
+  "dependencies": {
+    "@kixelated/hang": "0.7.0",
+    "@kixelated/moq": "0.9.4"
+  },
+  "devDependencies": {
+    "esbuild": "0.25.2"
+  }
+}

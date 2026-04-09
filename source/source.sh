@@ -2,20 +2,26 @@
 # ─────────────────────────────────────────────
 #  source.sh — live video source generator
 #
-#  Produces a synthetic 1280×720 @ 30 fps test
-#  stream with a visible UTC wall-clock overlay
-#  and writes it as MPEG-TS into a named pipe
-#  that the packager service reads.
+#  MODE 1 (default): if /videos/ contains any
+#    *.mp4 files they are looped end-to-end
+#    continuously as the live source.
+#
+#  MODE 2 (fallback): synthetic testsrc2 when
+#    no video files are present.
+#
+#  In both modes a visible UTC timestamp overlay
+#  is burned in and the stream is written as
+#  MPEG-TS into a named pipe for the packager.
 # ─────────────────────────────────────────────
 set -e
 
-RESOLUTION="${SOURCE_RESOLUTION:-1280x720}"
+RESOLUTION="${SOURCE_RESOLUTION:-1920x1080}"
 FPS="${SOURCE_FPS:-30}"
-BITRATE="${SOURCE_BITRATE:-1500k}"
+BITRATE="${SOURCE_BITRATE:-4000k}"
 PIPE="/media/source.pipe"
+VIDEOS_DIR="${VIDEOS_DIR:-/videos}"
 FONTFILE="/usr/share/fonts/dejavu/DejaVuSans-Bold.ttf"
 
-# keyframe every segment_duration seconds (default 2 s)
 SEG_DUR="${HLS_SEGMENT_DURATION:-2}"
 KEYINT=$(( FPS * SEG_DUR ))
 
@@ -31,38 +37,88 @@ if [ ! -f "$FONTFILE" ]; then
   fi
 fi
 
+# ── Build concat playlist if video files are present ──────────────────────
+PLAYLIST="/tmp/source_playlist.txt"
+build_playlist() {
+  # Collect mp4 files, sorted by name for deterministic order
+  FILES=$(find "$VIDEOS_DIR" -maxdepth 1 -name "*.mp4" 2>/dev/null | sort)
+  if [ -z "$FILES" ]; then
+    return 1   # no files
+  fi
+  printf "" > "$PLAYLIST"
+  for f in $FILES; do
+    printf "file '%s'\n" "$f" >> "$PLAYLIST"
+  done
+  echo "[source] playlist:"
+  sed 's/^/[source]   /' "$PLAYLIST"
+  return 0
+}
+
 # ── Named pipe lifecycle ──────────────────────────────────────────────────
-# The packager opens this pipe for reading.  FFmpeg blocks on the open()
-# call until the packager is ready.  On container restart we recreate the
-# FIFO so the Docker healthcheck fires again quickly.
 while true; do
   rm -f "$PIPE"
   mkfifo "$PIPE"
   echo "[source] FIFO ready at ${PIPE}"
-  echo "[source] stream: ${RESOLUTION} @ ${FPS}fps  bitrate=${BITRATE}  keyint=${KEYINT}"
 
-  ffmpeg \
-    -hide_banner \
-    -loglevel warning \
-    -re \
-    -f lavfi \
-    -i "testsrc2=size=${RESOLUTION}:rate=${FPS}" \
-    -vf "drawtext=fontfile=${FONTFILE}:\
+  if build_playlist; then
+    # ── Mode 1: real video files ──────────────────────────────────────────
+    echo "[source] mode=video  files=$(wc -l < "$PLAYLIST")  bitrate=${BITRATE}  keyint=${KEYINT}"
+
+    ffmpeg \
+      -hide_banner \
+      -loglevel warning \
+      -re \
+      -stream_loop -1 \
+      -f concat \
+      -safe 0 \
+      -i "$PLAYLIST" \
+      -vf "scale=${RESOLUTION},fps=${FPS},\
+drawtext=fontfile=${FONTFILE}:\
 text='SRC %{localtime\:%T} UTC':\
-fontsize=42:fontcolor=white:\
+fontsize=48:fontcolor=white:\
 box=1:boxcolor=black@0.65:\
 x=20:y=20" \
-    -c:v libx264 \
-    -preset ultrafast \
-    -tune zerolatency \
-    -profile:v baseline \
-    -g "${KEYINT}" \
-    -keyint_min "${KEYINT}" \
-    -sc_threshold 0 \
-    -b:v "${BITRATE}" \
-    -f mpegts \
-    -y \
-    "${PIPE}" 2>&1 | sed 's/^/[source] /'
+      -c:v libx264 \
+      -preset ultrafast \
+      -tune zerolatency \
+      -profile:v baseline \
+      -g "${KEYINT}" \
+      -keyint_min "${KEYINT}" \
+      -sc_threshold 0 \
+      -b:v "${BITRATE}" \
+      -an \
+      -f mpegts \
+      -y \
+      "${PIPE}" 2>&1 | sed 's/^/[source] /'
+
+  else
+    # ── Mode 2: synthetic test source ────────────────────────────────────
+    echo "[source] mode=testsrc2 (no videos found in ${VIDEOS_DIR})"
+    echo "[source] stream: ${RESOLUTION} @ ${FPS}fps  bitrate=${BITRATE}  keyint=${KEYINT}"
+
+    ffmpeg \
+      -hide_banner \
+      -loglevel warning \
+      -re \
+      -f lavfi \
+      -i "testsrc2=size=${RESOLUTION}:rate=${FPS}" \
+      -vf "drawtext=fontfile=${FONTFILE}:\
+text='SRC %{localtime\:%T} UTC':\
+fontsize=48:fontcolor=white:\
+box=1:boxcolor=black@0.65:\
+x=20:y=20" \
+      -c:v libx264 \
+      -preset ultrafast \
+      -tune zerolatency \
+      -profile:v baseline \
+      -g "${KEYINT}" \
+      -keyint_min "${KEYINT}" \
+      -sc_threshold 0 \
+      -b:v "${BITRATE}" \
+      -f mpegts \
+      -y \
+      "${PIPE}" 2>&1 | sed 's/^/[source] /'
+  fi
 
   echo "[source] FFmpeg exited — restarting in 2 s..."
   sleep 2

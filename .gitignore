@@ -1,0 +1,9 @@
+# Local video assets — not committed to the repo
+videos/
+
+# Environment overrides
+.env
+
+# OS / editor noise
+.DS_Store
+*.swp

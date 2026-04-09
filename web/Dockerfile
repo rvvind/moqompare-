@@ -8,10 +8,23 @@ RUN apk add --no-cache wget && \
       "https://cdn.jsdelivr.net/npm/hls.js@${HLS_JS_VERSION}/dist/hls.min.js" && \
     echo "hls.js ${HLS_JS_VERSION} downloaded ($(wc -c < /hls.min.js) bytes)"
 
-# ── Stage 2: nginx serving static files ──────────────────────────────────
+# ── Stage 2: bundle hang-watch MoQ player ────────────────────────────────
+FROM node:20-alpine AS moq-builder
+
+WORKDIR /build
+
+COPY package.json ./
+RUN npm install --silent
+
+COPY moq-player.js build.mjs ./
+RUN npm run build && \
+    echo "hang.js bundled ($(wc -c < static/hang.js) bytes)"
+
+# ── Stage 3: nginx serving static files ──────────────────────────────────
 FROM nginx:alpine
 
-COPY --from=fetcher /hls.min.js /usr/share/nginx/html/hls.min.js
-COPY static/               /usr/share/nginx/html/
+COPY --from=fetcher     /hls.min.js              /usr/share/nginx/html/hls.min.js
+COPY --from=moq-builder /build/static/hang.js    /usr/share/nginx/html/hang.js
+COPY static/                                      /usr/share/nginx/html/
 
 # nginx config is volume-mounted at runtime (see docker-compose.yml)

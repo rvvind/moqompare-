@@ -6,14 +6,25 @@ A local lab that plays the same live video stream over HLS and MoQ side by side,
 
 ---
 
-## Current phase: Phase 1 — HLS baseline
+## Current phase: Phase 4 — Metrics & Observability
 
 **What works:**
-- Live video source (FFmpeg testsrc2, 1280×720 @ 30 fps)
-- Visible UTC timestamp overlay ("SRC HH:MM:SS UTC")
-- Rolling fMP4 HLS manifest served over HTTP
-- Browser HLS player (hls.js) with startup time, latency, and stall count
-- MoQ path: placeholder (Phase 2)
+- Live video source (real MP4 files looped, 1280×720 @ 30 fps) with UTC timestamp overlay
+- Rolling fMP4 HLS manifest served over HTTP; hls.js player with startup, latency, stall metrics
+- MoQ path: moq-cli HLS ingest → moq-relay (QUIC/WebTransport) → hang-watch browser player
+- Both HLS and MoQ play the same live source with visible timestamp
+- Per-player metrics: latency, startup time, stall count, stall duration, bitrate, resolution
+- **Impairment controller**: privileged sidecar applies `tc netem` rules to origin + relay network namespaces
+- Impairment profile buttons in the UI (Baseline, Jitter+Loss, Bandwidth Squeeze, Burst Outage)
+- Event timeline showing impairment transitions and player events
+- **Metrics collector**: browser reports metrics every 5 s; Prometheus endpoint at `:9090/metrics`
+- JSON snapshot at `:9090/snapshot` (or `localhost:3000/metrics/snapshot`)
+- `scripts/demo.sh` cycles through all impairment profiles and prints a final metrics snapshot
+
+**Known limitations:**
+- MoQ playback has ~4–5 s latency due to HLS ingest burst pattern (2 s segments)
+- `tc netem` requires the Docker VM to support network namespace entry; works on Docker Desktop for Mac
+- Metrics are browser-pushed (pull-based relay metrics not yet implemented)
 
 ---
 
@@ -52,7 +63,7 @@ A local lab that plays the same live video stream over HLS and MoQ side by side,
 | `publisher` | placeholder | — |
 | `relay` | placeholder | 4443 |
 | `web` | nginx: UI + HLS proxy | **3000** |
-| `metrics` | placeholder | 9090 |
+| `metrics` | Prometheus metrics collector (browser-push) | 9090 |
 
 ---
 
@@ -142,6 +153,33 @@ Leave the browser tab open and observe:
 - Stall counter stays at 0
 - Latency stays roughly constant
 
+### 6. Verify metrics collector (Phase 4)
+
+After both players have been running for at least 5 seconds, the browser begins pushing metrics:
+
+```sh
+# JSON snapshot
+curl http://localhost:9090/snapshot
+
+# Prometheus format
+curl http://localhost:9090/metrics
+```
+
+Or via the web proxy:
+```sh
+curl http://localhost:3000/metrics/snapshot
+```
+
+Expected output includes `player_latency_seconds`, `player_stalls_total`, and `player_startup_ms` for both `hls` and `moq` protocols.
+
+### 7. Full demo with impairment cycle
+
+```sh
+./scripts/demo.sh
+```
+
+This opens the browser, cycles through all impairment profiles, and prints a metrics snapshot at the end.
+
 ---
 
 ## Make targets
@@ -154,6 +192,7 @@ Leave the browser tab open and observe:
 | `make logs` | Stream logs from all services |
 | `make ps` | Show container status |
 | `make clean` | Stop, remove containers + volumes, prune images |
+| `./scripts/demo.sh` | Full impairment demo cycle + metrics snapshot |
 
 ---
 
@@ -192,9 +231,9 @@ Edit `.env` (copied from `.env.example`) to tune:
 |-------|--------|------|
 | **0** | ✅ | Repo skeleton, Docker Compose, placeholder containers |
 | **1** | ✅ | Live HLS stream in the browser with metrics |
-| **2** | planned | Same stream via MoQ alongside HLS |
-| **3** | planned | Impairment injection and event timeline |
-| **4** | planned | Full metrics and observability |
+| **2** | ✅ | Same stream via MoQ alongside HLS |
+| **3** | ✅ | Impairment injection and event timeline |
+| **4** | ✅ | Full metrics and observability |
 
 See [`docs/phases.md`](docs/phases.md) for detailed acceptance criteria.  
 See [`docs/architecture.md`](docs/architecture.md) for design rationale.
