@@ -2,33 +2,38 @@
 """
 impair.py — Impairment HTTP API
 
-Applies tc netem rules to the network interfaces of the web proxy and relay
-containers by entering their network namespaces via nsenter.
+Two classes of impairment:
 
-Targets:
-  HLS_CONTAINER  (default: moqompare-web)   — nginx proxy that sits between
-                 the browser and origin.  Impairs HLS delivery to the browser
-                 without touching publisher→origin ingest (publishers read
-                 origin directly, not via web).
-  RELAY_CONTAINER (default: moqompare-relay) — QUIC relay.  Impairs outgoing
-                 MoQ objects to the browser.
+1. tc netem (network-layer) — applied to container eth0 via nsenter:
+     HLS_CONTAINER  (default: moqompare-web)   — nginx proxy; impairs HLS
+                    delivery to the browser without touching publisher→origin.
+     RELAY_CONTAINER (default: moqompare-relay) — QUIC relay; impairs outgoing
+                    MoQ objects to the browser.
+
+2. Manifest freeze (application-layer) — HTTP call to manifest-proxy:
+     stale_manifest — POST /freeze to manifest-proxy; HLS players receive the
+                    same stale segment list on every poll and cannot advance.
+                    MoQ is manifest-less and completely unaffected.
+                    Auto-clears after 30 s.
 
 Requires: privileged container with pid:host and iproute2 installed.
 
 Endpoints:
-  POST /impair/baseline  — clear all tc rules
-  POST /impair/jitter    — 30 ms delay ±20 ms, 1 % loss
-  POST /impair/squeeze   — 500 kbit/s rate cap
-  POST /impair/outage    — 100 % loss for 5 s, then auto-clear
+  POST /impair/baseline        — clear all tc rules + unfreeze manifests
+  POST /impair/jitter          — 30 ms delay ±20 ms, 1 % loss
+  POST /impair/squeeze         — 500 kbit/s rate cap
+  POST /impair/outage          — 100 % loss for 5 s, then auto-clear
+  POST /impair/stale_manifest  — freeze manifests for 30 s, then auto-clear
 
-  GET  /impair/status    — current profile as JSON
+  GET  /impair/status          — current profile as JSON
 """
 
 import json
 import os
 import subprocess
 import threading
-import time
+import urllib.request
+import urllib.error
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
 TARGETS = [
@@ -36,22 +41,26 @@ TARGETS = [
     os.environ.get("RELAY_CONTAINER", "moqompare-relay"),
 ]
 
-PROFILES = {
-    "baseline": [],  # no netem params → clears existing rules
+MANIFEST_PROXY_URL = os.environ.get("MANIFEST_PROXY_URL", "http://manifest-proxy:8091")
+
+# netem profiles — stale_manifest is handled separately (no netem)
+NETEM_PROFILES = {
+    "baseline": [],  # empty → delete qdisc
     "jitter":   ["delay", "30ms", "20ms", "distribution", "normal", "loss", "1%"],
     "squeeze":  ["rate", "500kbps"],
     "outage":   ["loss", "100%"],
 }
 
+ALL_PROFILES = set(NETEM_PROFILES) | {"stale_manifest"}
+
 _current_profile = "baseline"
 _lock = threading.Lock()
-_outage_timer: threading.Timer | None = None
+_auto_clear_timer: threading.Timer | None = None
 
 
 # ── tc helpers ────────────────────────────────────────────────────────────────
 
 def _pid_of(container: str) -> str | None:
-    """Get the init PID of a container via `docker inspect`."""
     try:
         r = subprocess.run(
             ["docker", "inspect", "--format", "{{.State.Pid}}", container],
@@ -70,67 +79,125 @@ def _pid_of(container: str) -> str | None:
 
 
 def _tc(pid: str, args: list[str]) -> tuple[bool, str]:
-    """Run tc in the network namespace of the given PID."""
     if args:
         cmd = ["nsenter", "--target", pid, "--net", "--",
                "tc", "qdisc", "replace", "dev", "eth0", "root", "netem"] + args
     else:
-        # 'replace' with no netem params is not valid — delete instead.
         cmd = ["nsenter", "--target", pid, "--net", "--",
                "tc", "qdisc", "del", "dev", "eth0", "root"]
     try:
         r = subprocess.run(cmd, capture_output=True, text=True, timeout=5)
         if r.returncode != 0:
-            # Deleting a non-existent qdisc is fine (RTNETLINK answers: No such file)
-            if "No such file" in r.stderr or "RTNETLINK" in r.stderr:
-                return True, ""
+            if ("No such file" in r.stderr or "RTNETLINK" in r.stderr
+                    or "handle of zero" in r.stderr):
+                return True, ""  # no qdisc to delete — that's fine
             return False, r.stderr.strip()
         return True, ""
     except Exception as e:
         return False, str(e)
 
 
-def apply_profile(profile: str) -> dict:
-    global _current_profile, _outage_timer
+def _apply_netem(profile: str) -> list[str]:
+    """Apply netem rules for a profile; return list of error strings."""
+    args = NETEM_PROFILES[profile]
+    errors = []
+    for container in TARGETS:
+        pid = _pid_of(container)
+        if pid is None:
+            errors.append(f"{container}: pid not found")
+            continue
+        ok, err = _tc(pid, args)
+        if not ok:
+            errors.append(f"{container}: {err}")
+        else:
+            print(f"[impair] netem {profile} → {container} (pid {pid}) OK")
+    return errors
 
-    if profile not in PROFILES:
-        return {"ok": False, "error": f"unknown profile: {profile}"}
+
+# ── manifest-proxy helpers ────────────────────────────────────────────────────
+
+def _manifest_freeze() -> tuple[bool, str]:
+    try:
+        req = urllib.request.Request(
+            f"{MANIFEST_PROXY_URL}/freeze", method="POST",
+            headers={"Content-Length": "0"},
+        )
+        with urllib.request.urlopen(req, timeout=5) as resp:
+            body = json.loads(resp.read())
+            print(f"[impair] manifest freeze OK — {body.get('cached', '?')} path(s) cached")
+            return True, ""
+    except Exception as e:
+        return False, str(e)
+
+
+def _manifest_unfreeze() -> tuple[bool, str]:
+    try:
+        req = urllib.request.Request(
+            f"{MANIFEST_PROXY_URL}/unfreeze", method="POST",
+            headers={"Content-Length": "0"},
+        )
+        with urllib.request.urlopen(req, timeout=5):
+            print("[impair] manifest unfreeze OK")
+            return True, ""
+    except Exception as e:
+        return False, str(e)
+
+
+# ── Profile application ───────────────────────────────────────────────────────
+
+def apply_profile(profile: str) -> dict:
+    global _current_profile, _auto_clear_timer
+
+    if profile not in ALL_PROFILES:
+        return {"ok": False, "errors": [f"unknown profile: {profile}"]}
 
     with _lock:
-        # Cancel any pending outage auto-clear.
-        if _outage_timer is not None:
-            _outage_timer.cancel()
-            _outage_timer = None
+        if _auto_clear_timer is not None:
+            _auto_clear_timer.cancel()
+            _auto_clear_timer = None
 
-        args = PROFILES[profile]
         errors = []
 
-        for container in TARGETS:
-            pid = _pid_of(container)
-            if pid is None:
-                errors.append(f"{container}: pid not found")
-                continue
-            ok, err = _tc(pid, args)
+        if profile == "stale_manifest":
+            # No netem — clear any existing network rules first, then freeze manifests
+            _apply_netem("baseline")
+            ok, err = _manifest_freeze()
             if not ok:
-                errors.append(f"{container}: {err}")
+                errors.append(f"manifest-proxy: {err}")
             else:
-                print(f"[impair] {profile} → {container} (pid {pid}) OK")
+                def _auto_unfreeze():
+                    print("[impair] stale_manifest: auto-clearing after 30 s")
+                    apply_profile("baseline")
+                _auto_clear_timer = threading.Timer(30.0, _auto_unfreeze)
+                _auto_clear_timer.daemon = True
+                _auto_clear_timer.start()
 
-        if profile == "outage" and not errors:
-            def _auto_clear():
-                print("[impair] outage: auto-clearing after 5 s")
-                apply_profile("baseline")
+        else:
+            # Always unfreeze manifests when switching away
+            _manifest_unfreeze()
+            errors = _apply_netem(profile)
 
-            _outage_timer = threading.Timer(5.0, _auto_clear)
-            _outage_timer.daemon = True
-            _outage_timer.start()
+            if profile == "outage" and not errors:
+                def _auto_clear():
+                    print("[impair] outage: auto-clearing after 5 s")
+                    apply_profile("baseline")
+                _auto_clear_timer = threading.Timer(5.0, _auto_clear)
+                _auto_clear_timer.daemon = True
+                _auto_clear_timer.start()
 
         _current_profile = profile if not errors else _current_profile
+
+        auto_secs = None
+        if profile == "outage" and not errors:
+            auto_secs = 5
+        elif profile == "stale_manifest" and not errors:
+            auto_secs = 30
+
         return {
             "ok": not errors,
             "profile": profile,
             "errors": errors,
-            "auto_clear_secs": 5 if profile == "outage" and not errors else None,
+            "auto_clear_secs": auto_secs,
         }
 
 
@@ -163,7 +230,6 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_POST(self):
         path = self.path.rstrip("/")
-        # Accept  /impair/<profile>  or  /<profile>
         profile = path.split("/")[-1]
         if not profile:
             self._send_json(400, {"error": "profile required"})
@@ -175,15 +241,15 @@ class Handler(BaseHTTPRequestHandler):
 if __name__ == "__main__":
     port = int(os.environ.get("IMPAIR_PORT", 8090))
     print(f"[impair] listening on :{port}")
-    print(f"[impair] targets: {TARGETS}")
+    print(f"[impair] netem targets: {TARGETS}")
+    print(f"[impair] manifest-proxy: {MANIFEST_PROXY_URL}")
 
-    # Startup smoke-test: verify docker socket is reachable and resolve PIDs.
     for t in TARGETS:
         pid = _pid_of(t)
         if pid:
             print(f"[impair] startup: {t} → pid {pid} OK")
         else:
-            print(f"[impair] startup: {t} → pid NOT FOUND (socket missing or container not running)")
+            print(f"[impair] startup: {t} → pid NOT FOUND")
 
     server = HTTPServer(("0.0.0.0", port), Handler)
     server.serve_forever()

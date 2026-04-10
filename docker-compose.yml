@@ -208,12 +208,38 @@ services:
       - relay
       - impairment
       - metrics
+      - manifest-proxy
     healthcheck:
       test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://127.0.0.1/health"]
       interval: 10s
       timeout: 5s
       retries: 3
       start_period: 10s
+
+  # ── 6b. Manifest freeze proxy ─────────────────────────────────────────────
+  # Sits between nginx and origin for *.m3u8 requests only.
+  # Normal mode: transparent proxy, caches last response per path.
+  # Frozen mode: returns cached snapshot — HLS players see stale manifests.
+  # MoQ publishers read origin directly and are completely unaffected.
+  manifest-proxy:
+    build:
+      context: ./manifest-proxy
+    container_name: moqompare-manifest-proxy
+    restart: unless-stopped
+    networks:
+      - moqompare
+    environment:
+      - ORIGIN_URL=http://origin
+      - MANIFEST_PROXY_PORT=8091
+    depends_on:
+      origin:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O- http://127.0.0.1:8091/health | grep -q ok"]
+      interval: 5s
+      timeout: 3s
+      retries: 6
+      start_period: 5s
 
   # ── 7. Impairment controller ──────────────────────────────────────────────
   # Privileged container with pid:host so it can nsenter into container
@@ -243,6 +269,7 @@ services:
     environment:
       - HLS_CONTAINER=${HLS_CONTAINER:-moqompare-web}
       - RELAY_CONTAINER=${RELAY_CONTAINER:-moqompare-relay}
+      - MANIFEST_PROXY_URL=http://manifest-proxy:8091
       - IMPAIR_PORT=8090
     depends_on:
       - origin

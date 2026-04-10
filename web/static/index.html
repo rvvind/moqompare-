@@ -298,6 +298,7 @@
     <button class="impair-btn" data-profile="jitter" onclick="setProfile('jitter')">Jitter + Loss</button>
     <button class="impair-btn" data-profile="squeeze" onclick="setProfile('squeeze')">Bandwidth Squeeze</button>
     <button class="impair-btn" data-profile="outage" onclick="setProfile('outage')">Burst Outage</button>
+    <button class="impair-btn" data-profile="stale_manifest" onclick="setProfile('stale_manifest')">Stale Manifest</button>
     <span id="current-profile">&#9679; baseline</span>
   </div>
   <div class="profile-note" id="profile-note">Select an impairment profile to see how each protocol responds.</div>
@@ -482,6 +483,16 @@
         'QUIC idle timeout fires, the WebTransport session closes, and the player ' +
         'reconnects automatically (8&thinsp;s reconnect guard). ' +
         'MoQ recovery is typically faster because QUIC re-establishes in 1 RTT (0-RTT on retry).',
+      stale_manifest:
+        '<span class="proto hls">HLS (TCP)</span> &mdash; ' +
+        'The player polls the manifest every ~2&thinsp;s to discover new segments. ' +
+        'With the manifest frozen, it receives the same stale segment list on every poll. ' +
+        'The last known segment is already buffered &mdash; the player stalls indefinitely ' +
+        'even though bandwidth and the segment server are fully healthy. ' +
+        'Auto-clears after 30&thinsp;s.&ensp;' +
+        '<span class="proto moq">MoQ (QUIC)</span> &mdash; ' +
+        'Manifest-less by design. The relay pushes new media objects as they are packaged; ' +
+        'there is nothing to poll and nothing to freeze. Playback is completely unaffected.',
     };
 
     function _setActiveBtn(name) {
