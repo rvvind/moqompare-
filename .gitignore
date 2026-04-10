@@ -1,6 +1,9 @@
 # Local video assets — not committed to the repo
 videos/
 
+# Claude Code worktrees
+.claude/worktrees/
+
 # Environment overrides
 .env
 

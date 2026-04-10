@@ -81,6 +81,21 @@
     .impair-btn.active { border-color: var(--warn); color: var(--warn); }
     #current-profile { margin-left: auto; color: var(--good); font-size: 12px; }
 
+    /* ── Profile note bar ────────────────────────────────────────────────── */
+    .profile-note {
+      padding: 6px 20px;
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      font-size: 11px;
+      color: var(--text-muted);
+      line-height: 1.5;
+      min-height: 28px;
+    }
+    .profile-note .proto { font-weight: 600; }
+    .profile-note .proto.hls  { color: var(--accent-hls); }
+    .profile-note .proto.moq  { color: var(--accent-moq); }
+    .profile-note.active { color: var(--text); }
+
     /* ── Players ─────────────────────────────────────────────────────────── */
     .players {
       display: grid;
@@ -191,6 +206,40 @@
       font-size: 11px;
     }
 
+    /* ── Drift bar ───────────────────────────────────────────────────────── */
+    .drift-bar {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 12px;
+      padding: 8px 20px;
+      background: var(--surface);
+      border-top: 1px solid var(--border);
+      border-bottom: 1px solid var(--border);
+    }
+    .drift-label {
+      font-size: 10px;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--text-muted);
+    }
+    .drift-proto {
+      font-size: 11px;
+      font-weight: 600;
+    }
+    .drift-proto.hls { color: var(--accent-hls); }
+    .drift-proto.moq { color: var(--accent-moq); }
+    #drift-value {
+      font-size: 20px;
+      font-weight: 700;
+      color: var(--text-muted);
+      min-width: 70px;
+      text-align: center;
+      letter-spacing: -0.02em;
+    }
+    .drift-arrow { color: var(--text-muted); font-size: 13px; }
+    #drift-note  { font-size: 10px; color: var(--text-muted); }
+
     /* ── Event timeline ──────────────────────────────────────────────────── */
     .timeline-section {
       border-top: 1px solid var(--border);
@@ -238,6 +287,7 @@
     <button class="impair-btn" data-profile="outage" onclick="setProfile('outage')">Burst Outage</button>
     <span id="current-profile">&#9679; baseline</span>
   </div>
+  <div class="profile-note" id="profile-note">Select an impairment profile to see how each protocol responds.</div>
 
   <!-- ── Side-by-side players ────────────────────────────────────────────── -->
   <div class="players">
@@ -297,6 +347,10 @@
         <span class="proto-label moq">MoQ</span>
         <div class="player-metrics">
           <div class="metric">
+            <span class="metric-value" id="moq-level">—</span>
+            <span class="metric-label">Rendition</span>
+          </div>
+          <div class="metric">
             <span class="metric-value" id="moq-resolution">—</span>
             <span class="metric-label">Resolution</span>
           </div>
@@ -323,7 +377,7 @@
         </div>
       </div>
       <div class="video-area">
-        <hang-watch id="moq-watch" muted latency="4500">
+        <hang-watch id="moq-watch" muted latency="2000">
           <canvas></canvas>
         </hang-watch>
         <div class="video-overlay" id="moq-overlay">
@@ -333,6 +387,17 @@
       </div>
     </div>
 
+  </div>
+
+  <!-- ── Drift bar ─────────────────────────────────────────────────────────── -->
+  <div class="drift-bar">
+    <span class="drift-label">Timestamp drift</span>
+    <span class="drift-proto hls">HLS</span>
+    <span class="drift-arrow">&#8592;</span>
+    <span id="drift-value">—</span>
+    <span class="drift-arrow">&#8592;</span>
+    <span class="drift-proto moq">MoQ</span>
+    <span id="drift-note">(measuring…)</span>
   </div>
 
   <!-- ── Event timeline ──────────────────────────────────────────────────── -->
@@ -372,6 +437,39 @@
     // ── Impairment UI ──────────────────────────────────────────────────────
     const impairBtns = document.querySelectorAll('.impair-btn');
     const profileEl  = document.getElementById('current-profile');
+    const noteEl     = document.getElementById('profile-note');
+
+    const PROFILE_NOTES = {
+      baseline:
+        'No impairment &mdash; both protocols run unhindered.',
+      jitter:
+        '<span class="proto hls">HLS (TCP)</span> &mdash; ' +
+        'TCP congestion control halves its window on every lost packet. ' +
+        'At 1&thinsp;% loss / 30&thinsp;ms RTT, effective throughput drops to ~4&ndash;5&thinsp;Mbps, ' +
+        'which is right at the hi-rendition ceiling &rarr; hls.js ABR switches to lo-rendition.&ensp;' +
+        '<span class="proto moq">MoQ (QUIC)</span> &mdash; ' +
+        'QUIC recovers losses via ACK retransmission without halving throughput. ' +
+        'The MoQ ABR controller is jitter-aware: it only switches down if MoQ itself has stalled ' +
+        '<em>and</em> bandwidth is low — TCP/HLS penalty alone does not trigger a switch. ' +
+        'Expect MoQ to hold hi-rendition while HLS drops to lo.',
+      squeeze:
+        '<span class="proto hls">HLS (TCP)</span> &mdash; ' +
+        '500&thinsp;kbps cap starves TCP; hls.js detects the lower effective throughput and ' +
+        'switches to the lo-rendition (640&times;360 @ 500&thinsp;kbps).&ensp;' +
+        '<span class="proto moq">MoQ (QUIC)</span> &mdash; ' +
+        'The JS ABR controller reads hls.js&rsquo;s bandwidth estimate. Once it falls below ' +
+        '3.6&thinsp;Mbps for 3 consecutive seconds, it switches the hang-watch element from ' +
+        '<em>stream_hi</em> to <em>stream_lo</em> (640&times;360 @ 500&thinsp;kbps). ' +
+        'Recovery back to hi triggers when bandwidth exceeds 5.2&thinsp;Mbps for 3 s.',
+      outage:
+        '<span class="proto hls">HLS (TCP)</span> &mdash; ' +
+        '100&thinsp;% loss stalls TCP; hls.js drains its buffer and stalls. ' +
+        'After 5&thinsp;s the connection recovers and hls.js re-buffers.&ensp;' +
+        '<span class="proto moq">MoQ (QUIC)</span> &mdash; ' +
+        'QUIC idle timeout fires, the WebTransport session closes, and the player ' +
+        'reconnects automatically (8&thinsp;s reconnect guard). ' +
+        'MoQ recovery is typically faster because QUIC re-establishes in 1 RTT (0-RTT on retry).',
+    };
 
     function _setActiveBtn(name) {
       impairBtns.forEach(b => b.classList.remove('active'));
@@ -380,6 +478,8 @@
       });
       profileEl.textContent = '\u25CF ' + name;
       profileEl.style.color = name === 'baseline' ? 'var(--good)' : 'var(--warn)';
+      noteEl.innerHTML = PROFILE_NOTES[name] || '';
+      noteEl.className = 'profile-note' + (name !== 'baseline' ? ' active' : '');
     }
 
     function setProfile(name) {
@@ -408,7 +508,7 @@
     }
 
     // ── HLS player ─────────────────────────────────────────────────────────
-    const HLS_URL = '/hls/stream.m3u8';
+    const HLS_URL = '/hls/master.m3u8';
     const video   = document.getElementById('hls-video');
     const overlay = document.getElementById('hls-overlay');
     const errEl   = document.getElementById('hls-error');
@@ -422,6 +522,9 @@
     let hlsLatency = null;
     let hlsBitrate = null;
     let hlsResW = null, hlsResH = null;
+    // Fast-recovering bandwidth EWMA (alpha=0.6) fed by per-segment measurements.
+    // Bypasses hls.js's Math.min(fast,slow) which is slow to recover after squeeze.
+    let _bwEwma = 0;
 
     if (!Hls.isSupported()) {
       // Fallback: Safari native HLS
@@ -440,6 +543,10 @@
         maxBufferLength:            10,
         enableWorker:               true,
         lowLatencyMode:             false,
+        // Faster EWMA recovery so ABR switches back up sooner after squeeze lifts.
+        // Default fast=3 / slow=9 takes ~10+ segments; 2/4 recovers in ~3 segments.
+        abrEwmaFastLive:  2,
+        abrEwmaSlowLive:  4,
       });
 
       hls.loadSource(HLS_URL);
@@ -507,6 +614,27 @@
           hlsBitrate = (bytes * 8) / dur;
           setText('hls-bitrate', fmtBitrate(hlsBitrate));
         }
+
+        // ── Fast-recovering bandwidth measurement ─────────────────────────
+        // Use actual transfer time (first-byte → last-byte) rather than
+        // hls.bandwidthEstimate which is Math.min(fast,slow) and is slow
+        // to climb back after squeeze is removed.
+        const st = data.frag.stats;
+        const transferMs = st.loading.end - st.loading.first;
+        if (transferMs > 1 && st.total > 0) {
+          const measuredBps = (st.total * 8 * 1000) / transferMs;
+          const alpha = 0.6;
+          _bwEwma = _bwEwma > 0
+            ? alpha * measuredBps + (1 - alpha) * _bwEwma
+            : measuredBps;
+          window._hlsBandwidthEst = _bwEwma;
+
+          // Force HLS to switch back up to hi quality without waiting for
+          // its own slow EWMA to recover — nextLoadLevel overrides ABR.
+          if (_bwEwma > ABR_HI_BPS * 1.5 && hls.currentLevel > 0) {
+            hls.nextLoadLevel = 0;
+          }
+        }
       });
 
       // ── ABR level switch ───────────────────────────────────────────────
@@ -536,6 +664,7 @@
           hlsResW = video.videoWidth; hlsResH = video.videoHeight;
           setText('hls-resolution', hlsResW + '×' + hlsResH);
         }
+        // _hlsBandwidthEst is now updated per-segment in FRAG_LOADED above.
       }, 1000);
 
       // ── Errors ─────────────────────────────────────────────────────────
@@ -618,67 +747,297 @@
   <script type="module">
     await customElements.whenDefined('hang-watch');
 
-    const MOQ_URL  = 'http://' + window.location.hostname + ':4443';
-    const MOQ_NAME = 'stream';
+    const MOQ_URL = 'http://' + window.location.hostname + ':4443';
+    const MOQ_HI  = 'stream_hi';
+    const MOQ_LO  = 'stream_lo';
 
-    const watchEl    = document.getElementById('moq-watch');
+    // ── ABR thresholds ────────────────────────────────────────────────────
+    const ABR_HI_BPS     = 4_000_000;
+    const ABR_DOWN_BPS   = ABR_HI_BPS * 0.90;   // 3.6 Mbps → lo
+    const ABR_UP_BPS     = ABR_HI_BPS * 1.30;   // 5.2 Mbps → hi
+    // Severe threshold: below this QUIC itself is constrained (not just TCP noise)
+    const ABR_SEVERE_BPS = ABR_HI_BPS * 0.50;   // 2.0 Mbps
+    const ABR_HOLD_TICKS = 3;
+    const RENDITION_BPS  = { [MOQ_HI]: 4_000_000, [MOQ_LO]: 500_000 };
+
+    // ── Timing constants ──────────────────────────────────────────────────
+    // Reconnect backoff: ms to wait before each successive attempt.
+    // Attempt 1 is a soft reconnect (no DOM teardown); 2+ are hard.
+    const MOQ_RECONNECT_BACKOFF = [1000, 2000, 4000, 8000];
+    // Long stall → resync to live edge to skip relay backlog
+    const MOQ_STALL_REINIT_MS   = 3000;
+    // After any switch/reconnect, hold ABR decisions for this long
+    const MOQ_ABR_COOLDOWN_MS   = 5000;
+    // Stall timestamps within this window count as "MoQ self-struggling"
+    const MOQ_STALL_WINDOW_MS   = 20000;
+
+    // ── State ─────────────────────────────────────────────────────────────
+    // Start at lo-rendition: smaller segments → faster first decode.
+    // The startup-upgrade path switches to hi after initial play is confirmed.
+    let moqCurrentName      = MOQ_LO;
+    let moqAbrDownCount     = 0;
+    let moqAbrUpCount       = 0;
+    let moqAbrSwitching     = false;
+    let moqAbrCooldownUntil = 0;
+    let moqStartupUpgrade   = true;   // pending lo→hi upgrade after initial play
+    let moqRecentStallTs    = [];     // timestamps of recent stalls (jitter guard)
+
+    let watchEl      = document.getElementById('moq-watch');
     const moqOverlay = document.getElementById('moq-overlay');
 
-    watchEl.url  = new URL(MOQ_URL);
-    watchEl.name = MOQ_NAME;
-
-    addEvent('MoQ connecting to ' + MOQ_URL + ' / ' + MOQ_NAME);
-
-    let moqStartTs     = performance.now();
-    let moqStartupDone = false;
-    let moqStartupMs   = null;
-    let moqStallCount  = 0;
-    let moqStallDurMs  = 0;
+    let moqStartTs      = performance.now();
+    let moqStartupDone  = false;
+    let moqStartupMs    = null;
+    let moqStallCount   = 0;
+    let moqStallDurMs   = 0;
     let moqStallStartTs = null;
-    let prevBroad      = null;
+    let prevBroad       = null;
     let moqResW = null, moqResH = null;
+
+    let moqDeadSince        = null;
+    let moqReconnectAttempt = 0;
+    let moqReconnectTimer   = null;
+
+    function _fmtBps(bps) {
+      if (bps >= 1e6) return (bps / 1e6).toFixed(1) + ' Mb/s';
+      return Math.round(bps / 1e3) + ' kb/s';
+    }
+
+    function _connectMoq() {
+      watchEl.url  = new URL(MOQ_URL);
+      watchEl.name = moqCurrentName;
+    }
+
+    function _replaceWatchEl() {
+      const parent = watchEl.parentNode;
+      const newEl  = document.createElement('hang-watch');
+      newEl.id = 'moq-watch';
+      newEl.setAttribute('muted', '');
+      newEl.setAttribute('latency', watchEl.getAttribute('latency') || '2000');
+      newEl.innerHTML = '<canvas></canvas>';
+      parent.replaceChild(newEl, watchEl);
+      watchEl = newEl;
+    }
+
+    // ── Reconnect machinery: soft → hard, exponential backoff ────────────
+    // Attempt 1 (soft): re-set url/name on the existing element — no DOM
+    // teardown, no visual flash, metrics preserved.  Works for QUIC idle
+    // timeout reconnects and brief relay hiccups.
+    // Attempts 2+: full element replacement for deeper failures.
+    function _cancelReconnect() {
+      if (moqReconnectTimer) { clearTimeout(moqReconnectTimer); moqReconnectTimer = null; }
+    }
+
+    function _scheduleReconnect() {
+      if (moqReconnectTimer) return;   // already pending
+      const delay = MOQ_RECONNECT_BACKOFF[
+        Math.min(moqReconnectAttempt, MOQ_RECONNECT_BACKOFF.length - 1)
+      ];
+      moqReconnectTimer = setTimeout(_doReconnect, delay);
+    }
+
+    function _doReconnect() {
+      moqReconnectTimer = null;
+      moqReconnectAttempt++;
+      prevBroad      = null;
+      moqAbrSwitching = false;
+      moqAbrCooldownUntil = performance.now() + MOQ_ABR_COOLDOWN_MS;
+
+      if (moqReconnectAttempt === 1) {
+        // Soft reconnect: just re-connect without replacing the element.
+        addEvent('MoQ soft reconnect…', 'warn');
+        setText('moq-status', 'Reconnecting…');
+        _connectMoq();
+      } else {
+        // Hard reconnect: full element replacement.
+        addEvent('MoQ hard reconnect (attempt ' + moqReconnectAttempt + ')…', 'warn');
+        setText('moq-status', 'Reconnecting…');
+        _replaceWatchEl();
+        _connectMoq();
+      }
+      // Schedule next attempt in case this one also fails.
+      _scheduleReconnect();
+    }
+
+    // ── Long-stall resync: skip relay backlog, reconnect to live edge ─────
+    // Does NOT reset startup/stall metrics — this is a resync, not a restart.
+    function _resyncMoq(stallMs) {
+      _cancelReconnect();
+      addEvent('MoQ long stall (' + stallMs.toFixed(0) + 'ms) — resyncing to live edge', 'warn');
+      setText('moq-status', 'Resyncing…');
+      moqDeadSince        = null;
+      moqReconnectAttempt = 0;
+      prevBroad           = null;
+      moqAbrCooldownUntil = performance.now() + MOQ_ABR_COOLDOWN_MS;
+      _replaceWatchEl();
+      _connectMoq();
+    }
+
+    // ── ABR switch ────────────────────────────────────────────────────────
+    function _abrSwitch(targetName) {
+      const label = targetName === MOQ_HI ? 'hi (1/2)' : 'lo (2/2)';
+      const bw    = window._hlsBandwidthEst || 0;
+      addEvent('MoQ ABR → ' + label.split(' ')[0] +
+               (bw ? ' (' + _fmtBps(bw) + ' avail)' : ''), 'warn');
+      setText('moq-status', 'Switching rendition…');
+      setText('moq-level', label);
+      setText('moq-bitrate', _fmtBps(RENDITION_BPS[targetName]));
+      moqCurrentName      = targetName;
+      moqDeadSince        = null;
+      prevBroad           = null;
+      moqAbrDownCount     = 0;
+      moqAbrUpCount       = 0;
+      moqAbrSwitching     = true;
+      moqAbrCooldownUntil = performance.now() + MOQ_ABR_COOLDOWN_MS;
+      _replaceWatchEl();
+      _connectMoq();
+    }
+
+    // ── ABR ticker ────────────────────────────────────────────────────────
+    // Jitter-aware: MoQ only switches DOWN if QUIC itself is stalling OR
+    // bandwidth is severely constrained (< 50% of hi threshold = 2 Mbps).
+    // This prevents a TCP/HLS jitter penalty (cwnd halving on 1% packet
+    // loss) from incorrectly downgrading the MoQ QUIC stream, which
+    // handles the same loss without throughput impact.
+    setInterval(function () {
+      if (!moqStartupDone) return;
+      if (performance.now() < moqAbrCooldownUntil) return;
+
+      const bw  = window._hlsBandwidthEst || 0;
+      const now = performance.now();
+
+      // Startup upgrade: lo → hi with minimal hold (1 BW tick) so MoQ
+      // reaches full quality within seconds of first play, without waiting
+      // for the 3-tick hold used for steady-state switches.
+      // If HLS hasn't produced a BW signal yet (bw=0), fall back to a
+      // 4-second timer — the local Docker bridge is always fast enough.
+      if (moqStartupUpgrade && moqCurrentName === MOQ_LO) {
+        if (bw > ABR_UP_BPS) {
+          moqStartupUpgrade = false;
+          _abrSwitch(MOQ_HI);
+          return;
+        }
+        if (bw <= 0 && moqStartupDone && (now - moqStartTs) > 4000) {
+          moqStartupUpgrade = false;
+          _abrSwitch(MOQ_HI);
+          return;
+        }
+        return;  // still waiting on startup upgrade — skip normal ABR
+      }
+
+      if (bw <= 0) return;
+
+      // Purge stale stall timestamps outside the tracking window
+      moqRecentStallTs = moqRecentStallTs.filter(t => now - t < MOQ_STALL_WINDOW_MS);
+      const moqSelfStruggles = moqRecentStallTs.length > 0;
+      const bwSevere         = bw < ABR_SEVERE_BPS;
+
+      if (moqCurrentName === MOQ_HI) {
+        // Require either MoQ self-distress or severe BW constraint to switch down.
+        if (bw < ABR_DOWN_BPS && (moqSelfStruggles || bwSevere)) {
+          moqAbrUpCount = 0;
+          if (++moqAbrDownCount >= ABR_HOLD_TICKS) _abrSwitch(MOQ_LO);
+        } else {
+          moqAbrDownCount = 0;
+        }
+      } else {
+        if (bw > ABR_UP_BPS) {
+          moqAbrDownCount = 0;
+          if (++moqAbrUpCount >= ABR_HOLD_TICKS) _abrSwitch(MOQ_HI);
+        } else {
+          moqAbrUpCount = 0;
+        }
+      }
+    }, 1000);
+
+    _connectMoq();
+    addEvent('MoQ connecting to ' + MOQ_URL + ' / ' + MOQ_LO + ' (startup — will upgrade to hi)');
 
     // ── Poll broadcast status and canvas metrics ──────────────────────────
     setInterval(function () {
       const instance = watchEl.active ? watchEl.active.peek() : undefined;
-      if (!instance) return;
+
+      // No active instance: WebTransport session dropped entirely.
+      if (!instance) {
+        if (moqStartupDone) {
+          if (moqDeadSince === null) {
+            moqDeadSince        = performance.now();
+            moqReconnectAttempt = 0;
+            _scheduleReconnect();
+          }
+          const deadSec = Math.floor((performance.now() - moqDeadSince) / 1000);
+          setText('moq-status', 'Reconnecting… (' + deadSec + 's)');
+          moqOverlay.classList.remove('hidden');
+        }
+        return;
+      }
 
       const broad = instance.broadcast.status
         ? instance.broadcast.status.peek()
         : undefined;
+
+      if (broad === 'offline' || broad === undefined) {
+        if (moqStartupDone) {
+          if (moqDeadSince === null) {
+            moqDeadSince        = performance.now();
+            moqReconnectAttempt = 0;
+            _scheduleReconnect();
+          }
+          const deadSec = Math.floor((performance.now() - moqDeadSince) / 1000);
+          setText('moq-status', 'Reconnecting… (' + deadSec + 's)');
+        } else {
+          setText('moq-status', 'Waiting for broadcast…');
+        }
+        moqOverlay.classList.remove('hidden');
+      } else {
+        // Any non-offline state (loading or live) means the session is alive.
+        if (moqDeadSince !== null) {
+          _cancelReconnect();
+          moqDeadSince        = null;
+          moqReconnectAttempt = 0;
+        }
+      }
 
       if (broad !== prevBroad) {
         prevBroad = broad;
 
         if (broad === 'live') {
           moqOverlay.classList.add('hidden');
+          moqAbrSwitching = false;
+          setText('moq-level', moqCurrentName === MOQ_HI ? 'hi (1/2)' : 'lo (2/2)');
           if (!moqStartupDone) {
             moqStartupDone = true;
-            moqStartupMs = parseFloat((performance.now() - moqStartTs).toFixed(0));
-            setText('moq-startup', moqStartupMs + 'ms');
+            moqStartupMs   = parseFloat((performance.now() - moqStartTs).toFixed(0));
+            setText('moq-startup',   moqStartupMs + 'ms');
+            setText('moq-bitrate',   _fmtBps(RENDITION_BPS[moqCurrentName]));
+            setText('moq-latency',   (parseInt(watchEl.getAttribute('latency') || '2000') / 1000).toFixed(1) + 's');
+            setText('moq-stalls',    '0');
+            setText('moq-stall-dur', '0ms');
             addEvent('MoQ live — startup ' + moqStartupMs + 'ms', 'good');
           }
-          // Accumulate stall duration when playback resumes
           if (moqStallStartTs !== null) {
-            moqStallDurMs += performance.now() - moqStallStartTs;
+            const thisStallMs = performance.now() - moqStallStartTs;
+            moqStallDurMs  += thisStallMs;
             moqStallStartTs = null;
             setText('moq-stall-dur', moqStallDurMs.toFixed(0) + 'ms');
+            if (thisStallMs > MOQ_STALL_REINIT_MS) {
+              _resyncMoq(thisStallMs);
+              return;
+            }
           }
         } else if (broad === 'loading') {
           moqOverlay.classList.remove('hidden');
           setText('moq-status', 'Buffering…');
-          if (moqStartupDone) {
+          if (moqStartupDone && !moqAbrSwitching) {
             moqStallCount++;
             moqStallStartTs = performance.now();
+            moqRecentStallTs.push(performance.now());
             setText('moq-stalls', moqStallCount);
             addEvent('MoQ stall #' + moqStallCount, 'warn');
           }
-        } else if (broad === 'offline') {
-          setText('moq-status', 'Waiting for broadcast…');
         }
       }
 
-      // Resolution from canvas once video is rendering
       const canvas = watchEl.querySelector('canvas');
       if (canvas && canvas.width > 1) {
         moqResW = canvas.width; moqResH = canvas.height;
@@ -698,6 +1057,135 @@
         });
       }
     }, 5000);
+  </script>
+  <!-- ── Drift measurement ──────────────────────────────────────────────── -->
+  <!-- Fingerprints the SRC HH:MM:SS region (x=20,y=20,320×60) from both    -->
+  <!-- players every 250 ms. Detects when each player's second-digit changes  -->
+  <!-- (a large brightness shift), records transition timestamps, then uses  -->
+  <!-- a 1-second histogram across all (HLS_trans − MoQ_trans) pairs to find -->
+  <!-- the modal delta — that modal bin is the true inter-player drift.       -->
+  <!-- MoQ is expected to be more live, so drift > 0 (HLS is further behind).-->
+  <script>
+    (function () {
+      const REGION_X = 20, REGION_Y = 20, REGION_W = 320, REGION_H = 60;
+      // Min brightness-sum change to count as a second-digit transition.
+      // At 48 px DejaVuSans-Bold one digit flip changes ~200–400 sampled
+      // pixels; noise between same-content frames is < 50.
+      const CHANGE_THRESH  = 2000;
+      // Keep transitions from the last 14 s (enough for HLS latency window)
+      const HISTORY_MS     = 14000;
+      // Need ≥ 2 cross-matches in the winning bin before trusting the result
+      const MIN_MATCHES    = 2;
+
+      const oc  = new OffscreenCanvas(REGION_W, REGION_H);
+      const ctx = oc.getContext('2d', { willReadFrequently: true });
+
+      let hlsFp = null, moqFp = null;
+      let hlsTrans = [];   // [{ts: performance.now()}]
+      let moqTrans = [];
+      let moqReadable = true;   // flipped false if canvas yields black pixels
+
+      function fingerprint(src) {
+        try {
+          ctx.drawImage(src, REGION_X, REGION_Y, REGION_W, REGION_H,
+                            0,        0,         REGION_W, REGION_H);
+          const d = ctx.getImageData(0, 0, REGION_W, REGION_H).data;
+          let s = 0;
+          // Sum R channel every 4th pixel — fast and sufficient for text
+          for (let i = 0; i < d.length; i += 16) s += d[i];
+          return s;
+        } catch (_) { return null; }
+      }
+
+      function prune(arr, now) {
+        const cut = now - HISTORY_MS;
+        while (arr.length && arr[0].ts < cut) arr.shift();
+      }
+
+      function computeAndDisplay(now) {
+        prune(hlsTrans, now);
+        prune(moqTrans, now);
+        if (hlsTrans.length < 2 || moqTrans.length < 2) return;
+
+        // Build histogram of (hls_ts − moq_ts) in 1-second bins.
+        // The bin with the most entries is the true drift second-bucket.
+        const bins = {};
+        for (const h of hlsTrans) {
+          for (const m of moqTrans) {
+            const dt = h.ts - m.ts;
+            if (dt > 0 && dt < HISTORY_MS) {
+              const b = Math.floor(dt / 1000);
+              bins[b] = (bins[b] || 0) + 1;
+            }
+          }
+        }
+
+        let modeBin = -1, modeCount = 0;
+        for (const [b, c] of Object.entries(bins)) {
+          if (c > modeCount) { modeCount = c; modeBin = parseInt(b); }
+        }
+        if (modeCount < MIN_MATCHES || modeBin < 0) return;
+
+        // Refine: average the raw deltas that fall within ±500 ms of the bin centre
+        const centre = (modeBin + 0.5) * 1000;
+        const refined = [];
+        for (const h of hlsTrans) {
+          for (const m of moqTrans) {
+            const dt = h.ts - m.ts;
+            if (Math.abs(dt - centre) < 500) refined.push(dt);
+          }
+        }
+        if (refined.length === 0) return;
+        const driftMs = refined.reduce((a, b) => a + b, 0) / refined.length;
+
+        // Update UI
+        const valEl  = document.getElementById('drift-value');
+        const noteEl = document.getElementById('drift-note');
+        if (!valEl) return;
+
+        const s = (driftMs / 1000).toFixed(1);
+        valEl.textContent = '+' + s + 's';
+        valEl.style.color =
+          driftMs < 1500  ? 'var(--good)' :
+          driftMs < 5000  ? 'var(--warn)' : 'var(--bad)';
+        if (noteEl) noteEl.textContent = 'HLS is ' + s + 's behind MoQ';
+      }
+
+      setInterval(function () {
+        const video  = document.getElementById('hls-video');
+        const watch  = document.getElementById('moq-watch');
+        const canvas = watch ? watch.querySelector('canvas') : null;
+        const now    = performance.now();
+
+        // ── HLS fingerprint ─────────────────────────────────────────────
+        if (video && video.readyState >= 2 && !video.paused) {
+          const fp = fingerprint(video);
+          if (fp !== null) {
+            if (hlsFp !== null && Math.abs(fp - hlsFp) > CHANGE_THRESH) {
+              hlsTrans.push({ ts: now });
+              computeAndDisplay(now);
+            }
+            hlsFp = fp;
+          }
+        }
+
+        // ── MoQ fingerprint ─────────────────────────────────────────────
+        if (moqReadable && canvas && canvas.width > 1) {
+          const fp = fingerprint(canvas);
+          if (fp === null || fp < 10) {
+            // All-black result → WebGL canvas without preserveDrawingBuffer
+            moqReadable = false;
+            const noteEl = document.getElementById('drift-note');
+            if (noteEl) noteEl.textContent = '(MoQ canvas not readable — WebGL)';
+          } else {
+            if (moqFp !== null && Math.abs(fp - moqFp) > CHANGE_THRESH) {
+              moqTrans.push({ ts: now });
+            }
+            moqFp = fp;
+          }
+        }
+      }, 250);
+    })();
   </script>
 </body>
 </html>

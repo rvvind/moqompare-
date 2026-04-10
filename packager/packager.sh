@@ -21,6 +21,8 @@ PIPE="/media/source.pipe"
 HLS_DIR="/media/hls"
 SEG_DUR="${HLS_SEGMENT_DURATION:-2}"
 LIST_SIZE="${HLS_LIST_SIZE:-5}"
+SOURCE_FPS="${SOURCE_FPS:-30}"
+GOP_SIZE=$(( SEG_DUR * SOURCE_FPS ))
 
 # High rendition: mirrors the source
 HI_BITRATE="${SOURCE_BITRATE:-4000k}"
@@ -36,6 +38,8 @@ mkdir -p "${HLS_DIR}"
 write_master() {
   HI_BPS=$(echo "${HI_BITRATE}" | sed 's/[kK]$/000/;s/[mM]$/000000/')
   LO_BPS=$(echo "${LO_BITRATE}" | sed 's/[kK]$/000/;s/[mM]$/000000/')
+
+  # ABR master playlist (used by HLS player)
   cat > "${HLS_DIR}/master.m3u8" << EOF
 #EXTM3U
 #EXT-X-VERSION:6
@@ -46,7 +50,28 @@ stream_hi.m3u8
 #EXT-X-STREAM-INF:BANDWIDTH=${LO_BPS},RESOLUTION=${LO_RESOLUTION},CODECS="avc1.42c028",NAME="low"
 stream_lo.m3u8
 EOF
-  echo "[packager] master.m3u8 written  hi=${HI_RESOLUTION}@${HI_BITRATE}  lo=${LO_RESOLUTION}@${LO_BITRATE}"
+
+  # Single-rendition masters for MoQ publishers (moq-cli requires a master
+  # playlist with EXT-X-STREAM-INF; it cannot read media playlists directly)
+  cat > "${HLS_DIR}/master_hi.m3u8" << EOF
+#EXTM3U
+#EXT-X-VERSION:6
+#EXT-X-INDEPENDENT-SEGMENTS
+
+#EXT-X-STREAM-INF:BANDWIDTH=${HI_BPS},RESOLUTION=${HI_RESOLUTION},CODECS="avc1.42c028",NAME="high"
+stream_hi.m3u8
+EOF
+
+  cat > "${HLS_DIR}/master_lo.m3u8" << EOF
+#EXTM3U
+#EXT-X-VERSION:6
+#EXT-X-INDEPENDENT-SEGMENTS
+
+#EXT-X-STREAM-INF:BANDWIDTH=${LO_BPS},RESOLUTION=${LO_RESOLUTION},CODECS="avc1.42c028",NAME="low"
+stream_lo.m3u8
+EOF
+
+  echo "[packager] master playlists written  hi=${HI_RESOLUTION}@${HI_BITRATE}  lo=${LO_RESOLUTION}@${LO_BITRATE}"
 }
 
 write_master
@@ -74,6 +99,7 @@ while true; do
     -map "[vhi]" \
     -c:v libx264 -b:v "${HI_BITRATE}" \
     -preset ultrafast -tune zerolatency -profile:v baseline \
+    -g "${GOP_SIZE}" -keyint_min "${GOP_SIZE}" -sc_threshold 0 \
     -f hls \
     -hls_time "${SEG_DUR}" -hls_list_size "${LIST_SIZE}" \
     -hls_flags "${HLS_FLAGS}" \
@@ -85,6 +111,7 @@ while true; do
     -map "[vlo_s]" \
     -c:v libx264 -b:v "${LO_BITRATE}" \
     -preset ultrafast -tune zerolatency -profile:v baseline \
+    -g "${GOP_SIZE}" -keyint_min "${GOP_SIZE}" -sc_threshold 0 \
     -f hls \
     -hls_time "${SEG_DUR}" -hls_list_size "${LIST_SIZE}" \
     -hls_flags "${HLS_FLAGS}" \

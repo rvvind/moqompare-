@@ -64,6 +64,7 @@ services:
       - SOURCE_RESOLUTION=${SOURCE_RESOLUTION:-1920x1080}
       - ABR_LO_BITRATE=${ABR_LO_BITRATE:-500k}
       - ABR_LO_RESOLUTION=${ABR_LO_RESOLUTION:-640x360}
+      - SOURCE_FPS=${SOURCE_FPS:-30}
     healthcheck:
       test: ["CMD", "test", "-f", "/media/hls/master.m3u8"]
       interval: 5s
@@ -94,20 +95,52 @@ services:
       retries: 3
       start_period: 5s
 
-  # ── 4. MoQ publisher ─────────────────────────────────────────────────────
-  # moq-cli polls the HLS manifest produced by the packager and publishes
-  # each fMP4 segment to the relay using the MoQ protocol over QUIC.
-  publisher:
+  # ── 4a. MoQ publisher — hi rendition ────────────────────────────────────
+  # Publishes the hi-rendition (source resolution/bitrate) as broadcast
+  # "stream_hi".  The JS ABR controller subscribes to this by default and
+  # falls back to stream_lo when measured bandwidth drops below threshold.
+  publisher-hi:
     build:
       context: ./publisher
-    container_name: moqompare-publisher
+    container_name: moqompare-publisher-hi
     restart: unless-stopped
     command: >
       publish
       --url http://relay:4443
-      --name stream
+      --name stream_hi
       hls
-      --playlist http://origin/hls/master.m3u8
+      --playlist http://origin/hls/master_hi.m3u8
+    networks:
+      - moqompare
+    depends_on:
+      origin:
+        condition: service_healthy
+      relay:
+        condition: service_healthy
+    environment:
+      - MOQ_LOG_LEVEL=${LOG_LEVEL:-info}
+    healthcheck:
+      test: ["CMD", "sh", "-c", "exit 0"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
+
+  # ── 4b. MoQ publisher — lo rendition ────────────────────────────────────
+  # Publishes the lo-rendition (640×360 @ ABR_LO_BITRATE) as broadcast
+  # "stream_lo".  The JS ABR controller switches to this broadcast when
+  # bandwidth falls below the hi-rendition threshold.
+  publisher-lo:
+    build:
+      context: ./publisher
+    container_name: moqompare-publisher-lo
+    restart: unless-stopped
+    command: >
+      publish
+      --url http://relay:4443
+      --name stream_lo
+      hls
+      --playlist http://origin/hls/master_lo.m3u8
     networks:
       - moqompare
     depends_on:
