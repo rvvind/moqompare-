@@ -216,8 +216,19 @@ services:
       start_period: 10s
 
   # ── 7. Impairment controller ──────────────────────────────────────────────
-  # Privileged container with pid:host so it can nsenter into origin/relay
+  # Privileged container with pid:host so it can nsenter into container
   # network namespaces and apply tc netem rules without modifying those images.
+  #
+  # Impairment targets:
+  #   HLS_CONTAINER  (default: moqompare-web)   — nginx proxy between browser
+  #                  and origin.  Impairs HLS delivery without touching the
+  #                  publisher→origin ingest path (publisher reads origin
+  #                  directly, not via web).  Targeting origin would also
+  #                  degrade publisher ingest and starve the relay.
+  #   RELAY_CONTAINER (default: moqompare-relay) — QUIC relay.  Impairs
+  #                  outgoing MoQ objects to the browser.  Publisher pushes
+  #                  INTO the relay so relay→publisher traffic is minimal
+  #                  (QUIC ACKs only) and not meaningfully degraded.
   impairment:
     build:
       context: ./impairment
@@ -230,7 +241,7 @@ services:
     networks:
       - moqompare
     environment:
-      - ORIGIN_CONTAINER=${ORIGIN_CONTAINER:-moqompare-origin}
+      - HLS_CONTAINER=${HLS_CONTAINER:-moqompare-web}
       - RELAY_CONTAINER=${RELAY_CONTAINER:-moqompare-relay}
       - IMPAIR_PORT=8090
     depends_on:

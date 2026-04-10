@@ -2,8 +2,16 @@
 """
 impair.py — Impairment HTTP API
 
-Applies tc netem rules to the network interfaces of the origin and relay
+Applies tc netem rules to the network interfaces of the web proxy and relay
 containers by entering their network namespaces via nsenter.
+
+Targets:
+  HLS_CONTAINER  (default: moqompare-web)   — nginx proxy that sits between
+                 the browser and origin.  Impairs HLS delivery to the browser
+                 without touching publisher→origin ingest (publishers read
+                 origin directly, not via web).
+  RELAY_CONTAINER (default: moqompare-relay) — QUIC relay.  Impairs outgoing
+                 MoQ objects to the browser.
 
 Requires: privileged container with pid:host and iproute2 installed.
 
@@ -24,8 +32,8 @@ import time
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
 TARGETS = [
-    os.environ.get("ORIGIN_CONTAINER", "moqompare-origin"),
-    os.environ.get("RELAY_CONTAINER",  "moqompare-relay"),
+    os.environ.get("HLS_CONTAINER",   "moqompare-web"),
+    os.environ.get("RELAY_CONTAINER", "moqompare-relay"),
 ]
 
 PROFILES = {

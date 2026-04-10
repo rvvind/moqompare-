@@ -1,0 +1,906 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>moqompare — Fanout Demo</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:         #0f1117;
+      --surface:    #1a1d27;
+      --border:     #2a2d3a;
+      --accent-hls: #3b82f6;
+      --accent-moq: #a855f7;
+      --accent:     var(--accent-moq);
+      --text:       #e2e8f0;
+      --text-muted: #64748b;
+      --good:       #22c55e;
+      --warn:       #f59e0b;
+      --bad:        #ef4444;
+    }
+    body.mode-hls { --accent: var(--accent-hls); }
+    body.mode-moq { --accent: var(--accent-moq); }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'SF Mono', 'Fira Code', monospace;
+      font-size: 13px;
+      height: 100vh;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* ── Header ─────────────────────────────────────────────────────────── */
+    header {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      padding: 8px 20px;
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      flex-shrink: 0;
+      flex-wrap: wrap;
+    }
+    .back-link {
+      color: var(--text-muted);
+      text-decoration: none;
+      font-size: 12px;
+      white-space: nowrap;
+    }
+    .back-link:hover { color: var(--text); }
+    header h1 {
+      font-size: 14px;
+      font-weight: 700;
+      letter-spacing: 0.04em;
+      white-space: nowrap;
+    }
+    header h1 .proto { color: var(--accent); }
+
+    .controls {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      margin-left: auto;
+      flex-wrap: wrap;
+    }
+    .ctrl-label {
+      font-size: 10px;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--text-muted);
+    }
+    .ctrl-btn {
+      background: var(--border);
+      color: var(--text);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      padding: 3px 10px;
+      cursor: pointer;
+      font-family: inherit;
+      font-size: 12px;
+      transition: background 0.12s;
+    }
+    .ctrl-btn:hover { background: #333649; }
+    .ctrl-btn.active { border-color: var(--accent); color: var(--accent); }
+    .ctrl-sep { color: var(--border); user-select: none; }
+
+    /* Protocol selector pills */
+    .proto-btn {
+      background: var(--border);
+      color: var(--text-muted);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      padding: 4px 14px;
+      cursor: pointer;
+      font-family: inherit;
+      font-size: 13px;
+      font-weight: 600;
+      transition: all 0.12s;
+    }
+    .proto-btn.hls.active { border-color: var(--accent-hls); color: var(--accent-hls); background: rgba(59,130,246,0.1); }
+    .proto-btn.moq.active { border-color: var(--accent-moq); color: var(--accent-moq); background: rgba(168,85,247,0.1); }
+    .proto-btn:hover { background: #333649; }
+
+    /* ── Impairment bar ──────────────────────────────────────────────────── */
+    .impairment-bar {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 20px;
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      flex-shrink: 0;
+      flex-wrap: wrap;
+    }
+    .impairment-bar label {
+      color: var(--text-muted);
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+    }
+    .impair-btn {
+      background: var(--border);
+      color: var(--text);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      padding: 3px 10px;
+      cursor: pointer;
+      font-family: inherit;
+      font-size: 12px;
+      transition: background 0.15s;
+    }
+    .impair-btn:hover { background: #333649; }
+    .impair-btn.active { border-color: var(--warn); color: var(--warn); }
+    #current-profile { margin-left: auto; font-size: 12px; color: var(--good); }
+
+    /* ── Aggregate bar ───────────────────────────────────────────────────── */
+    .agg-bar {
+      display: flex;
+      align-items: center;
+      gap: 24px;
+      padding: 6px 20px;
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      flex-shrink: 0;
+    }
+    .agg-stat {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+    .agg-val {
+      font-size: 17px;
+      font-weight: 700;
+      line-height: 1.1;
+    }
+    .agg-lbl {
+      font-size: 9px;
+      text-transform: uppercase;
+      letter-spacing: 0.07em;
+      color: var(--text-muted);
+      margin-top: 1px;
+    }
+    #agg-playing { color: var(--text); }
+
+    /* ── Grid ────────────────────────────────────────────────────────────── */
+    #grid {
+      flex: 1;
+      min-height: 0;
+      display: grid;
+      gap: 1px;
+      background: var(--border);
+      overflow: hidden;
+    }
+
+    /* ── Player panel ────────────────────────────────────────────────────── */
+    .player-panel {
+      background: #080a10;
+      position: relative;
+      overflow: hidden;
+      min-height: 0;
+      min-width: 0;
+      height: 100%;
+      width: 100%;
+    }
+
+    /* MoQ: hang-watch fills panel */
+    hang-watch {
+      position: absolute;
+      inset: 0;
+      display: block;
+      background: #080a10;
+    }
+    hang-watch canvas {
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+      display: block;
+    }
+
+    /* HLS: video fills panel */
+    .hls-video {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+      background: #080a10;
+      display: block;
+    }
+
+    /* ── Player overlay (spinner while not playing) ──────────────────────── */
+    .player-overlay {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      pointer-events: none;
+      background: rgba(8, 10, 16, 0.6);
+    }
+    .player-overlay.hidden { display: none; }
+    .spinner {
+      width: 22px;
+      height: 22px;
+      border: 2px solid var(--border);
+      border-top-color: var(--accent);
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .overlay-msg {
+      color: var(--text-muted);
+      font-size: 10px;
+    }
+
+    /* ── Per-player badge (bottom-left corner) ───────────────────────────── */
+    .player-badge {
+      position: absolute;
+      bottom: 5px;
+      left: 5px;
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      padding: 2px 6px;
+      background: rgba(10, 12, 20, 0.80);
+      border-radius: 4px;
+      pointer-events: none;
+      z-index: 2;
+    }
+    .badge-num {
+      font-size: 10px;
+      font-weight: 700;
+      color: var(--text-muted);
+    }
+    .badge-dot {
+      font-size: 7px;
+      line-height: 1;
+    }
+    .badge-dot.live     { color: var(--good); }
+    .badge-dot.loading  { color: var(--warn); }
+    .badge-dot.offline  { color: var(--bad); }
+    .badge-dot.init     { color: var(--text-muted); }
+    .badge-info {
+      font-size: 10px;
+      color: var(--text-muted);
+    }
+  </style>
+</head>
+<body class="mode-moq">
+
+  <!-- ── Header ─────────────────────────────────────────────────────────── -->
+  <header>
+    <a href="/" class="back-link">← comparison</a>
+    <h1>Fanout Demo &mdash; <span class="proto" id="proto-label">MoQ</span></h1>
+    <div class="controls">
+      <span class="ctrl-label">Protocol</span>
+      <button class="proto-btn moq active" data-p="moq" onclick="setMode('moq')">MoQ</button>
+      <button class="proto-btn hls"        data-p="hls" onclick="setMode('hls')">HLS</button>
+      <span class="ctrl-sep">|</span>
+      <span class="ctrl-label">Players</span>
+      <button class="ctrl-btn" data-n="4"  onclick="setN(4)">4</button>
+      <button class="ctrl-btn" data-n="6"  onclick="setN(6)">6</button>
+      <button class="ctrl-btn active" data-n="9"  onclick="setN(9)">9</button>
+      <button class="ctrl-btn" data-n="16" onclick="setN(16)">16</button>
+      <span class="ctrl-sep" id="stream-sep">|</span>
+      <span class="ctrl-label" id="stream-label">Stream</span>
+      <button class="ctrl-btn active" data-s="hi" onclick="setStream('hi')">Hi (1080p)</button>
+      <button class="ctrl-btn"        data-s="lo" onclick="setStream('lo')">Lo (360p)</button>
+    </div>
+  </header>
+
+  <!-- ── Impairment bar ────────────────────────────────────────────────── -->
+  <div class="impairment-bar">
+    <label>Impairment:</label>
+    <button class="impair-btn active" data-profile="baseline" onclick="setProfile('baseline')">Baseline</button>
+    <button class="impair-btn" data-profile="jitter"   onclick="setProfile('jitter')">Jitter + Loss</button>
+    <button class="impair-btn" data-profile="squeeze"  onclick="setProfile('squeeze')">Bandwidth Squeeze</button>
+    <button class="impair-btn" data-profile="outage"   onclick="setProfile('outage')">Burst Outage</button>
+    <span id="current-profile">&#9679; baseline</span>
+  </div>
+
+  <!-- ── Aggregate bar ──────────────────────────────────────────────────── -->
+  <div class="agg-bar">
+    <div class="agg-stat">
+      <span class="agg-val" id="agg-playing">—</span>
+      <span class="agg-lbl">Playing</span>
+    </div>
+    <div class="agg-stat">
+      <span class="agg-val" id="agg-startup" style="color:var(--text-muted)">—</span>
+      <span class="agg-lbl">Avg Startup</span>
+    </div>
+    <div class="agg-stat">
+      <span class="agg-val" id="agg-spread" style="color:var(--text-muted)">—</span>
+      <span class="agg-lbl">Startup Spread</span>
+    </div>
+    <div class="agg-stat">
+      <span class="agg-val" id="agg-stalls" style="color:var(--text-muted)">0</span>
+      <span class="agg-lbl">Total Stalls</span>
+    </div>
+    <!-- Right side: protocol-specific stat -->
+    <div class="agg-stat" style="margin-left:auto">
+      <span class="agg-val" id="agg-extra" style="font-size:11px;color:var(--text-muted);font-weight:400">—</span>
+      <span class="agg-lbl" id="agg-extra-lbl">Relay</span>
+    </div>
+  </div>
+
+  <!-- ── Player grid ────────────────────────────────────────────────────── -->
+  <div id="grid"></div>
+
+  <!-- Dependencies -->
+  <script src="/hls.min.js"></script>
+  <script type="module" src="/hang.js"></script>
+  <script type="module">
+    await customElements.whenDefined('hang-watch');
+
+    // ── Constants ──────────────────────────────────────────────────────────
+    const MOQ_URL        = 'http://' + location.hostname + ':4443';
+    const HLS_MASTER     = '/hls/master.m3u8';   // ABR master for both modes
+    const MOQ_STREAMS    = { hi: 'stream_hi', lo: 'stream_lo' };
+
+    const RECONNECT_BACKOFF = [1000, 2000, 4000, 8000];
+    const STALL_REINIT_MS   = 3000;
+    const MOQ_ABR_COOLDOWN_MS = 5000;
+
+    // ABR thresholds (same as main page)
+    const ABR_HI_BPS   = 4_000_000;
+    const ABR_DOWN_BPS = ABR_HI_BPS * 0.90;   // 3.6 Mbps → lo
+    const ABR_UP_BPS   = ABR_HI_BPS * 1.30;   // 5.2 Mbps → hi
+
+    // ── Shared state ───────────────────────────────────────────────────────
+    let currentMode   = 'moq';
+    let currentN      = 9;
+    let currentStream = 'hi';
+    let players       = [];
+    let hlsTotalReqs  = 0;    // HLS mode: cumulative HTTP requests across all players
+
+    // Shared bandwidth EWMA — fed by HLS FRAG_LOADED events (all modes)
+    let _sharedBwEwma = 0;
+    let _bwProbe      = null;   // hidden hls.js instance used as BW probe in MoQ mode
+
+    function _feedBw(bytes, transferMs) {
+      if (transferMs > 1 && bytes > 0) {
+        const bps = (bytes * 8 * 1000) / transferMs;
+        _sharedBwEwma = _sharedBwEwma > 0
+          ? 0.6 * bps + 0.4 * _sharedBwEwma
+          : bps;
+      }
+    }
+
+    // Start a hidden hls.js instance on the master playlist solely to feed _sharedBwEwma.
+    // Used in MoQ mode where there are no visible HLS players.
+    function _startBwProbe() {
+      _stopBwProbe();
+      if (!Hls.isSupported()) return;
+      const vid = document.createElement('video');
+      vid.muted = true; vid.style.display = 'none';
+      document.body.appendChild(vid);
+      const hls = new Hls({ maxBufferLength: 4, maxMaxBufferLength: 8, enableWorker: true });
+      hls.loadSource(HLS_MASTER);
+      hls.attachMedia(vid);
+      hls.on(Hls.Events.MANIFEST_PARSED, () => vid.play().catch(() => {}));
+      hls.on(Hls.Events.FRAG_LOADED, function (_, data) {
+        const st = data.frag.stats;
+        _feedBw(st.total, st.loading.end - st.loading.first);
+      });
+      _bwProbe = { hls, vid };
+    }
+
+    function _stopBwProbe() {
+      if (_bwProbe) {
+        _bwProbe.hls.destroy();
+        if (_bwProbe.vid.parentNode) _bwProbe.vid.parentNode.removeChild(_bwProbe.vid);
+        _bwProbe = null;
+      }
+    }
+
+    // ── Grid layout ────────────────────────────────────────────────────────
+    function applyGridLayout(n) {
+      const cols = n <= 4 ? 2 : n <= 9 ? 3 : 4;
+      const rows = Math.ceil(n / cols);
+      const g    = document.getElementById('grid');
+      g.style.gridTemplateColumns = 'repeat(' + cols + ', 1fr)';
+      g.style.gridTemplateRows    = 'repeat(' + rows + ', 1fr)';
+    }
+
+    // ── Shared UI helpers ──────────────────────────────────────────────────
+    function _setDot(id, cls) {
+      const el = document.getElementById('dot' + id);
+      if (el) el.className = 'badge-dot ' + cls;
+    }
+    function _setInfo(id, text) {
+      const el = document.getElementById('inf' + id);
+      if (el) el.textContent = text;
+    }
+    function _setOverlay(id, visible, msg) {
+      const ov = document.getElementById('ov' + id);
+      const om = document.getElementById('om' + id);
+      if (ov) ov.classList.toggle('hidden', !visible);
+      if (om && msg !== null) om.textContent = msg;
+    }
+
+    // ── Shared panel DOM builder ───────────────────────────────────────────
+    function buildPanelShell(id) {
+      const div = document.createElement('div');
+      div.className = 'player-panel';
+      div.innerHTML =
+        '<div class="player-overlay" id="ov' + id + '">' +
+          '<div class="spinner"></div>' +
+          '<span class="overlay-msg" id="om' + id + '">Connecting…</span>' +
+        '</div>' +
+        '<div class="player-badge">' +
+          '<span class="badge-num">#' + (id + 1) + '</span>' +
+          '<span class="badge-dot init" id="dot' + id + '">●</span>' +
+          '<span class="badge-info"  id="inf' + id + '">—</span>' +
+        '</div>';
+      return div;
+    }
+
+    // ══════════════════════════════════════════════════════════════════════
+    //  MoQ mode
+    // ══════════════════════════════════════════════════════════════════════
+
+    function makeMoqState(id) {
+      return {
+        id,
+        watchEl:           null,
+        status:            'init',
+        startTs:           performance.now(),
+        startupMs:         null,
+        stallCount:        0,
+        stallStartTs:      null,
+        prevBroad:         null,
+        deadSince:         null,
+        reconnectAttempt:  0,
+        reconnectTimer:    null,
+        // ABR
+        currentRendition:  'lo',   // start lo for fast first frame
+        abrDownCount:      0,
+        abrUpCount:        0,
+        abrCooldownUntil:  0,
+        abrStartupUpgrade: true,   // pending lo→hi upgrade after first play
+      };
+    }
+
+    function _moqConnect(s) {
+      s.watchEl.url  = new URL(MOQ_URL);
+      s.watchEl.name = MOQ_STREAMS[s.currentRendition];
+    }
+
+    function _moqAbrSwitch(s, rendition) {
+      s.currentRendition  = rendition;
+      s.abrDownCount      = 0;
+      s.abrUpCount        = 0;
+      s.abrCooldownUntil  = performance.now() + MOQ_ABR_COOLDOWN_MS;
+      s.prevBroad         = null;
+      _moqReplaceEl(s);
+      _moqConnect(s);
+      _setInfo(s.id, rendition === 'hi' ? '↑hi' : '↓lo');
+    }
+
+    function _moqReplaceEl(s) {
+      const old = s.watchEl;
+      const el  = document.createElement('hang-watch');
+      el.id = 'w' + s.id;
+      el.setAttribute('muted', '');
+      el.setAttribute('latency', '2000');
+      el.innerHTML = '<canvas></canvas>';
+      old.parentNode.replaceChild(el, old);
+      s.watchEl = el;
+    }
+
+    function _moqCancelReconnect(s) {
+      if (s.reconnectTimer) { clearTimeout(s.reconnectTimer); s.reconnectTimer = null; }
+    }
+
+    function _moqScheduleReconnect(s) {
+      if (s.reconnectTimer) return;
+      const delay = RECONNECT_BACKOFF[Math.min(s.reconnectAttempt, RECONNECT_BACKOFF.length - 1)];
+      s.reconnectTimer = setTimeout(() => _moqDoReconnect(s), delay);
+    }
+
+    function _moqDoReconnect(s) {
+      s.reconnectTimer = null;
+      s.prevBroad      = null;
+      s.reconnectAttempt++;
+      if (s.reconnectAttempt === 1) {
+        _moqConnect(s);
+      } else {
+        _moqReplaceEl(s); _moqConnect(s);
+      }
+      _moqScheduleReconnect(s);
+    }
+
+    function checkMoqPlayer(s) {
+      const instance = s.watchEl.active ? s.watchEl.active.peek() : undefined;
+      const now      = performance.now();
+
+      if (!instance) {
+        if (s.startupMs !== null) {
+          if (s.deadSince === null) {
+            s.deadSince = now;
+            s.reconnectAttempt = 0;
+            _moqScheduleReconnect(s);
+          }
+          const sec = Math.floor((now - s.deadSince) / 1000);
+          _setDot(s.id, 'offline');
+          _setOverlay(s.id, true, 'Reconnecting… (' + sec + 's)');
+          _setInfo(s.id, 'reconnecting');
+        }
+        return;
+      }
+
+      const broad = instance.broadcast.status
+        ? instance.broadcast.status.peek()
+        : undefined;
+
+      if (broad === 'offline' || broad === undefined) {
+        if (s.startupMs !== null) {
+          if (s.deadSince === null) {
+            s.deadSince = now;
+            s.reconnectAttempt = 0;
+            _moqScheduleReconnect(s);
+          }
+          const sec = Math.floor((now - s.deadSince) / 1000);
+          _setOverlay(s.id, true, 'Reconnecting… (' + sec + 's)');
+        } else {
+          _setOverlay(s.id, true, 'Waiting for broadcast…');
+        }
+        _setDot(s.id, 'offline');
+      } else {
+        if (s.deadSince !== null) {
+          _moqCancelReconnect(s);
+          s.deadSince = null;
+          s.reconnectAttempt = 0;
+        }
+      }
+
+      if (broad !== s.prevBroad) {
+        s.prevBroad = broad;
+        if (broad === 'live') {
+          s.status = 'live';
+          _setDot(s.id, 'live');
+          _setOverlay(s.id, false, null);
+          if (s.startupMs === null) {
+            s.startupMs = now - s.startTs;
+            _setInfo(s.id, (s.startupMs / 1000).toFixed(1) + 's');
+          }
+          if (s.stallStartTs !== null) {
+            const stallMs = now - s.stallStartTs;
+            s.stallStartTs = null;
+            if (stallMs > STALL_REINIT_MS) { _moqReplaceEl(s); _moqConnect(s); }
+          }
+        } else if (broad === 'loading') {
+          s.status = 'loading';
+          _setDot(s.id, 'loading');
+          _setOverlay(s.id, true, 'Buffering…');
+          if (s.startupMs !== null && s.stallStartTs === null) {
+            s.stallCount++;
+            s.stallStartTs = now;
+          }
+        }
+      }
+    }
+
+    function buildMoqGrid(n) {
+      players.forEach(s => { if (s) _moqCancelReconnect(s); });
+      players = [];
+      _sharedBwEwma = 0;
+      const grid = document.getElementById('grid');
+      grid.innerHTML = '';
+      applyGridLayout(n);
+      for (let i = 0; i < n; i++) {
+        const panel = buildPanelShell(i);
+        const watchEl = document.createElement('hang-watch');
+        watchEl.id = 'w' + i;
+        watchEl.setAttribute('muted', '');
+        watchEl.setAttribute('latency', '2000');
+        watchEl.innerHTML = '<canvas></canvas>';
+        panel.insertBefore(watchEl, panel.firstChild);
+        grid.appendChild(panel);
+        const s = makeMoqState(i);
+        s.watchEl = watchEl;
+        players.push(s);
+        _moqConnect(s);
+      }
+      _startBwProbe();   // hidden hls.js feeds _sharedBwEwma for ABR
+    }
+
+    // ══════════════════════════════════════════════════════════════════════
+    //  HLS mode
+    // ══════════════════════════════════════════════════════════════════════
+
+    function makeHlsState(id) {
+      return {
+        id,
+        hls:       null,
+        video:     null,
+        status:    'init',
+        startTs:   performance.now(),
+        startupMs: null,
+        stallCount:   0,
+        stallStartTs: null,
+      };
+    }
+
+    function _hlsAttach(s) {
+      if (!Hls.isSupported()) {
+        s.video.src = HLS_MASTER;
+        s.video.play().catch(() => {});
+        return;
+      }
+      if (s.hls) { s.hls.destroy(); s.hls = null; }
+
+      const hls = new Hls({
+        liveSyncDurationCount:      2,
+        liveMaxLatencyDurationCount: 5,
+        maxBufferLength:             10,
+        maxMaxBufferLength:          20,
+        enableWorker:                true,
+        startLevel:                  -1,   // let hls.js pick via ABR
+      });
+      s.hls = hls;
+
+      hls.loadSource(HLS_MASTER);
+      hls.attachMedia(s.video);
+
+      hls.on(Hls.Events.MANIFEST_PARSED, function () {
+        s.video.play().catch(() => {});
+      });
+
+      hls.on(Hls.Events.FRAG_LOADED, function (_, data) {
+        hlsTotalReqs++;
+        // Feed shared BW EWMA from every HLS player's segment transfers
+        const st = data.frag.stats;
+        _feedBw(st.total, st.loading.end - st.loading.first);
+
+        // First frag loaded → playing
+        if (s.startupMs === null) {
+          s.startupMs = performance.now() - s.startTs;
+          s.status    = 'live';
+          _setDot(s.id, 'live');
+          _setOverlay(s.id, false, null);
+          _setInfo(s.id, (s.startupMs / 1000).toFixed(1) + 's');
+        }
+        // Stall recovery
+        if (s.stallStartTs !== null) {
+          s.stallStartTs = null;
+          s.status = 'live';
+          _setDot(s.id, 'live');
+          _setOverlay(s.id, false, null);
+        }
+      });
+
+      s.video.addEventListener('waiting', function () {
+        if (s.startupMs !== null && s.stallStartTs === null) {
+          s.stallCount++;
+          s.stallStartTs = performance.now();
+          s.status = 'loading';
+          _setDot(s.id, 'loading');
+          _setOverlay(s.id, true, 'Buffering…');
+        }
+      });
+
+      hls.on(Hls.Events.ERROR, function (_, data) {
+        if (data.fatal) {
+          _setDot(s.id, 'offline');
+          _setOverlay(s.id, true, 'Error — retrying…');
+          if (data.type === Hls.ErrorTypes.NETWORK_ERROR) {
+            hls.startLoad();
+          } else {
+            hls.destroy();
+            s.hls = null;
+            setTimeout(() => { if (s.video) _hlsAttach(s); }, 2000);
+          }
+        }
+      });
+    }
+
+    function buildHlsGrid(n) {
+      players.forEach(s => { if (s && s.hls) { s.hls.destroy(); s.hls = null; } });
+      players = [];
+      hlsTotalReqs = 0;
+      _sharedBwEwma = 0;
+      _stopBwProbe();   // HLS players feed BW directly — no probe needed
+
+      const grid = document.getElementById('grid');
+      grid.innerHTML = '';
+      applyGridLayout(n);
+
+      for (let i = 0; i < n; i++) {
+        const panel = buildPanelShell(i);
+        const video = document.createElement('video');
+        video.className = 'hls-video';
+        video.muted = true;
+        video.playsInline = true;
+        video.id = 'hv' + i;
+        panel.insertBefore(video, panel.firstChild);
+        grid.appendChild(panel);
+
+        const s = makeHlsState(i);
+        s.video = video;
+        players.push(s);
+        _hlsAttach(s);
+      }
+    }
+
+    // ══════════════════════════════════════════════════════════════════════
+    //  Shared aggregate poller
+    // ══════════════════════════════════════════════════════════════════════
+    setInterval(function () {
+      let playing = 0, stalls = 0;
+      const startups = [];
+
+      const bw = _sharedBwEwma;
+
+      for (const s of players) {
+        if (!s) continue;
+        if (currentMode === 'moq') {
+          checkMoqPlayer(s);
+
+          // ── Per-player MoQ ABR ──────────────────────────────────────────
+          const now = performance.now();
+          if (s.startupMs !== null && now > s.abrCooldownUntil) {
+            // Startup upgrade: lo→hi after first play confirmed
+            if (s.abrStartupUpgrade && s.currentRendition === 'lo') {
+              if (bw > ABR_UP_BPS || (bw <= 0 && (now - s.startTs) > 4000)) {
+                s.abrStartupUpgrade = false;
+                _moqAbrSwitch(s, 'hi');
+              }
+            } else if (s.currentRendition === 'hi') {
+              if (bw > 0 && bw < ABR_DOWN_BPS) {
+                if (++s.abrDownCount >= 1) _moqAbrSwitch(s, 'lo');
+              } else {
+                s.abrDownCount = 0;
+              }
+            } else {
+              if (bw > ABR_UP_BPS) {
+                if (++s.abrUpCount >= 1) _moqAbrSwitch(s, 'hi');
+              } else {
+                s.abrUpCount = 0;
+              }
+            }
+          }
+        }
+        if (s.status === 'live') playing++;
+        stalls += s.stallCount;
+        if (s.startupMs !== null) startups.push(s.startupMs);
+      }
+
+      const total = players.length;
+
+      const pEl = document.getElementById('agg-playing');
+      if (pEl) {
+        pEl.textContent = playing + '/' + total;
+        pEl.style.color =
+          playing === total ? 'var(--good)' :
+          playing > 0       ? 'var(--warn)' : 'var(--bad)';
+      }
+
+      if (startups.length > 0) {
+        const avg = startups.reduce((a, b) => a + b, 0) / startups.length;
+        const el  = document.getElementById('agg-startup');
+        if (el) { el.textContent = (avg / 1000).toFixed(1) + 's'; el.style.color = 'var(--text)'; }
+      }
+
+      if (startups.length === total && total > 0) {
+        const spread = Math.max(...startups) - Math.min(...startups);
+        const el = document.getElementById('agg-spread');
+        if (el) {
+          el.textContent = (spread / 1000).toFixed(1) + 's';
+          el.style.color = spread < 1000 ? 'var(--good)' :
+                           spread < 3000 ? 'var(--warn)' : 'var(--bad)';
+        }
+      }
+
+      const sEl = document.getElementById('agg-stalls');
+      if (sEl) {
+        sEl.textContent = stalls;
+        sEl.style.color = stalls === 0 ? 'var(--text-muted)' :
+                          stalls < 5   ? 'var(--warn)' : 'var(--bad)';
+      }
+
+      // Protocol-specific extra stat
+      const extraEl    = document.getElementById('agg-extra');
+      const extraLblEl = document.getElementById('agg-extra-lbl');
+      if (currentMode === 'moq') {
+        if (extraEl)    extraEl.textContent    = location.hostname + ':4443';
+        if (extraLblEl) extraLblEl.textContent = 'Relay';
+        if (extraEl)    extraEl.style.fontSize = '11px';
+      } else {
+        if (extraEl)    extraEl.textContent    = hlsTotalReqs;
+        if (extraLblEl) extraLblEl.textContent = 'HTTP Reqs';
+        if (extraEl)    extraEl.style.fontSize = '17px';
+        if (extraEl)    extraEl.style.color    = hlsTotalReqs > 0 ? 'var(--text)' : 'var(--text-muted)';
+      }
+    }, 500);
+
+    // ══════════════════════════════════════════════════════════════════════
+    //  Public controls
+    // ══════════════════════════════════════════════════════════════════════
+
+    window.setMode = function (mode) {
+      currentMode = mode;
+      document.body.className = 'mode-' + mode;
+      document.querySelectorAll('[data-p]').forEach(b =>
+        b.classList.toggle('active', b.dataset.p === mode));
+      const lbl = document.getElementById('proto-label');
+      if (lbl) lbl.textContent = mode === 'moq' ? 'MoQ' : 'HLS';
+
+      // Stream selector only meaningful for HLS (MoQ uses auto-ABR)
+      const streamSep = document.getElementById('stream-sep');
+      const streamBtns = document.querySelectorAll('[data-s]');
+      const streamLbl = document.getElementById('stream-label');
+      if (streamSep)  streamSep.style.display  = mode === 'hls' ? '' : 'none';
+      if (streamLbl)  streamLbl.style.display  = mode === 'hls' ? '' : 'none';
+      streamBtns.forEach(b => { b.style.display = mode === 'hls' ? '' : 'none'; });
+
+      ['agg-startup','agg-spread'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) { el.textContent = '—'; el.style.color = 'var(--text-muted)'; }
+      });
+      document.getElementById('agg-stalls').textContent = '0';
+
+      if (mode === 'moq') buildMoqGrid(currentN);
+      else                buildHlsGrid(currentN);
+    };
+
+    window.setN = function (n) {
+      currentN = n;
+      document.querySelectorAll('[data-n]').forEach(b =>
+        b.classList.toggle('active', +b.dataset.n === n));
+      if (currentMode === 'moq') buildMoqGrid(n);
+      else                       buildHlsGrid(n);
+    };
+
+    window.setStream = function (stream) {
+      currentStream = stream;
+      document.querySelectorAll('[data-s]').forEach(b =>
+        b.classList.toggle('active', b.dataset.s === stream));
+      // HLS only — MoQ uses auto-ABR
+      if (currentMode === 'hls') {
+        players.forEach(s => { if (!s) return; _hlsAttach(s); });
+      }
+    };
+
+    // ── Impairment ─────────────────────────────────────────────────────────
+    let _activeProfile = 'baseline';
+    let _autoClearTimer = null;
+
+    window.setProfile = function (name) {
+      const btns      = document.querySelectorAll('.impair-btn');
+      const profileEl = document.getElementById('current-profile');
+
+      btns.forEach(b => b.classList.toggle('active', b.dataset.profile === name));
+      profileEl.textContent = '\u25CF ' + name;
+      profileEl.style.color = name === 'baseline' ? 'var(--good)' : 'var(--warn)';
+
+      if (_autoClearTimer) { clearTimeout(_autoClearTimer); _autoClearTimer = null; }
+
+      fetch('/impair/' + name, { method: 'POST' })
+        .then(r => r.json())
+        .then(function (d) {
+          if (d.ok && d.auto_clear_secs) {
+            _autoClearTimer = setTimeout(function () {
+              btns.forEach(b => b.classList.toggle('active', b.dataset.profile === 'baseline'));
+              profileEl.textContent = '\u25CF baseline';
+              profileEl.style.color = 'var(--good)';
+              _activeProfile = 'baseline';
+            }, d.auto_clear_secs * 1000);
+          }
+          _activeProfile = name;
+        })
+        .catch(function () { /* silently ignore — impairment service may not be up */ });
+    };
+
+    // ── Start ──────────────────────────────────────────────────────────────
+    buildMoqGrid(currentN);
+  </script>
+</body>
+</html>

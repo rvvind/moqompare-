@@ -49,6 +49,16 @@
       padding: 3px 8px;
       font-size: 11px;
     }
+    .fanout-link {
+      color: var(--accent-moq);
+      text-decoration: none;
+      font-size: 12px;
+      border: 1px solid var(--accent-moq);
+      border-radius: 4px;
+      padding: 3px 10px;
+      transition: background 0.15s;
+    }
+    .fanout-link:hover { background: rgba(168,85,247,0.15); }
 
     /* ── Impairment bar ──────────────────────────────────────────────────── */
     .impairment-bar {
@@ -275,7 +285,10 @@
   <!-- ── Header ──────────────────────────────────────────────────────────── -->
   <header>
     <h1>moqompare &mdash; <span class="hls">HLS</span> vs <span class="moq">MoQ</span></h1>
-    <span class="phase-badge">Phase 5 &mdash; ABR Ladder</span>
+    <div style="display:flex;align-items:center;gap:10px;">
+      <a class="fanout-link" href="/fanout">Fanout Demo &rarr;</a>
+      <span class="phase-badge">Phase 5 &mdash; ABR Ladder</span>
+    </div>
   </header>
 
   <!-- ── Impairment bar ──────────────────────────────────────────────────── -->
@@ -753,11 +766,9 @@
 
     // ── ABR thresholds ────────────────────────────────────────────────────
     const ABR_HI_BPS     = 4_000_000;
-    const ABR_DOWN_BPS   = ABR_HI_BPS * 0.90;   // 3.6 Mbps → lo
-    const ABR_UP_BPS     = ABR_HI_BPS * 1.30;   // 5.2 Mbps → hi
-    // Severe threshold: below this QUIC itself is constrained (not just TCP noise)
-    const ABR_SEVERE_BPS = ABR_HI_BPS * 0.50;   // 2.0 Mbps
-    const ABR_HOLD_TICKS = 3;
+    const ABR_DOWN_BPS   = ABR_HI_BPS * 0.90;   // 3.6 Mbps → switch down
+    const ABR_UP_BPS     = ABR_HI_BPS * 1.30;   // 5.2 Mbps → switch up
+    const ABR_HOLD_TICKS = 1;                    // 1 tick = near-instant switch
     const RENDITION_BPS  = { [MOQ_HI]: 4_000_000, [MOQ_LO]: 500_000 };
 
     // ── Timing constants ──────────────────────────────────────────────────
@@ -927,14 +938,9 @@
 
       if (bw <= 0) return;
 
-      // Purge stale stall timestamps outside the tracking window
-      moqRecentStallTs = moqRecentStallTs.filter(t => now - t < MOQ_STALL_WINDOW_MS);
-      const moqSelfStruggles = moqRecentStallTs.length > 0;
-      const bwSevere         = bw < ABR_SEVERE_BPS;
-
       if (moqCurrentName === MOQ_HI) {
-        // Require either MoQ self-distress or severe BW constraint to switch down.
-        if (bw < ABR_DOWN_BPS && (moqSelfStruggles || bwSevere)) {
+        // Switch down immediately when BW falls below threshold.
+        if (bw < ABR_DOWN_BPS) {
           moqAbrUpCount = 0;
           if (++moqAbrDownCount >= ABR_HOLD_TICKS) _abrSwitch(MOQ_LO);
         } else {
