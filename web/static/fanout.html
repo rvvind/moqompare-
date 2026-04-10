@@ -659,12 +659,13 @@
       if (s.hls) { s.hls.destroy(); s.hls = null; }
 
       const hls = new Hls({
-        liveSyncDurationCount:      2,
-        liveMaxLatencyDurationCount: 5,
+        liveSyncDurationCount:       2,
+        liveMaxLatencyDurationCount: 60,  // allow up to 120 s of lag before seeking
+        maxLiveSyncPlaybackRate:     1.0, // no speed-up catch-up — lag stays visible
         maxBufferLength:             10,
         maxMaxBufferLength:          20,
         enableWorker:                true,
-        startLevel:                  -1,   // let hls.js pick via ABR
+        startLevel:                  -1,  // let hls.js pick via ABR
       });
       s.hls = hls;
 

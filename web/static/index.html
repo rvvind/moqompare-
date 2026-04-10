@@ -583,7 +583,8 @@
     } else {
       const hls = new Hls({
         liveSyncDurationCount:      3,   // stay ~3 segments behind live edge
-        liveMaxLatencyDurationCount: 6,
+        liveMaxLatencyDurationCount: 60, // allow up to 120 s of lag before seeking
+        maxLiveSyncPlaybackRate:    1.0, // no speed-up catch-up — lag stays visible
         maxBufferLength:            10,
         enableWorker:               true,
         lowLatencyMode:             false,
