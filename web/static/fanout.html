@@ -680,6 +680,26 @@
         if (lvl) _setInfo(s.id, lvl.width + '×' + lvl.height);
       });
 
+      // Poll live lag and surface it in the badge when behind
+      s._lagInterval = setInterval(function () {
+        if (!s.hls) { clearInterval(s._lagInterval); return; }
+        const lag = s.hls.latency;
+        if (typeof lag !== 'number') return;
+        const infoEl = document.getElementById('inf' + s.id);
+        if (!infoEl) return;
+        if (lag > 8) {
+          infoEl.textContent = lag.toFixed(0) + 's behind';
+          infoEl.style.color = lag > 15 ? 'var(--bad)' : 'var(--warn)';
+        } else {
+          // Back near live — restore resolution label
+          const lvl = s.hls.levels && s.hls.levels[s.hls.currentLevel];
+          if (lvl) {
+            infoEl.textContent = lvl.width + '×' + lvl.height;
+            infoEl.style.color = '';
+          }
+        }
+      }, 1000);
+
       hls.on(Hls.Events.FRAG_LOADED, function (_, data) {
         hlsTotalReqs++;
         // Feed shared BW EWMA from every HLS player's segment transfers
@@ -729,7 +749,11 @@
     }
 
     function buildHlsGrid(n) {
-      players.forEach(s => { if (s && s.hls) { s.hls.destroy(); s.hls = null; } });
+      players.forEach(s => {
+        if (!s) return;
+        if (s._lagInterval) { clearInterval(s._lagInterval); s._lagInterval = null; }
+        if (s.hls) { s.hls.destroy(); s.hls = null; }
+      });
       players = [];
       hlsTotalReqs = 0;
       _sharedBwEwma = 0;
@@ -952,7 +976,11 @@
               btns.forEach(b => b.classList.toggle('active', b.dataset.profile === 'baseline'));
               profileEl.textContent = '\u25CF baseline';
               profileEl.style.color = 'var(--good)';
+              noteEl.innerHTML  = PROFILE_NOTES['baseline'] || '';
+              noteEl.className  = 'profile-note';
               _activeProfile = 'baseline';
+              // After stale manifest clears, badge lag indicators will self-update
+              // via each player's _lagInterval — no extra action needed here.
             }, d.auto_clear_secs * 1000);
           }
           _activeProfile = name;

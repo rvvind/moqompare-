@@ -514,12 +514,32 @@
         .then(function (d) {
           if (d.ok) {
             const label = { baseline: 'cleared', jitter: '30 ms ±20 ms + 1% loss',
-                            squeeze: '500 kbps cap', outage: '100% loss / 5 s' }[name] || name;
+                            squeeze: '500 kbps cap', outage: '100% loss / 5 s',
+                            stale_manifest: 'manifests frozen / 30 s' }[name] || name;
             addEvent('impairment \u2192 ' + name + ' (' + label + ')', name === 'baseline' ? 'good' : 'warn');
             if (d.auto_clear_secs) {
               setTimeout(function () {
                 _setActiveBtn('baseline');
-                addEvent('impairment \u2192 baseline (outage cleared)', 'good');
+                if (name === 'stale_manifest') {
+                  // Report HLS lag at the moment manifests unfreeze
+                  const lagNow = (typeof hls !== 'undefined' && typeof hls.latency === 'number')
+                    ? hls.latency : null;
+                  const lagStr = lagNow !== null ? lagNow.toFixed(0) + 's' : '?s';
+                  addEvent('manifests unfrozen \u2014 HLS is ' + lagStr + ' behind live edge', 'warn');
+                  // Watch for catch-up completion (lag back below 8 s)
+                  const catchUpInterval = setInterval(function () {
+                    if (typeof hls === 'undefined') { clearInterval(catchUpInterval); return; }
+                    const lag = hls.latency;
+                    if (typeof lag === 'number' && lag < 8) {
+                      addEvent('HLS caught up to live edge (' + lag.toFixed(1) + 's lag)', 'good');
+                      clearInterval(catchUpInterval);
+                    }
+                  }, 1000);
+                  // Give up watching after 2 min
+                  setTimeout(() => clearInterval(catchUpInterval), 120_000);
+                } else {
+                  addEvent('impairment \u2192 baseline (outage cleared)', 'good');
+                }
               }, d.auto_clear_secs * 1000);
             }
           } else {
@@ -682,7 +702,14 @@
 
         if (typeof hls.latency === 'number' && hls.latency > 0) {
           hlsLatency = hls.latency;
-          setText('hls-latency', hlsLatency.toFixed(1) + 's');
+          const lagEl = document.getElementById('hls-latency');
+          if (lagEl) {
+            lagEl.textContent = hlsLatency.toFixed(1) + 's' +
+              (hlsLatency > 8 ? ' ↑' : '');
+            lagEl.style.color =
+              hlsLatency > 15 ? 'var(--bad)'  :
+              hlsLatency >  8 ? 'var(--warn)' : '';
+          }
         }
         if (video.videoWidth) {
           hlsResW = video.videoWidth; hlsResH = video.videoHeight;
