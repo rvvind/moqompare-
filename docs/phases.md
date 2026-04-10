@@ -81,8 +81,44 @@ Acceptance test: metrics reflect what is observed visually during impairment cyc
 
 ---
 
-## Future (post-Phase 4)
+## Phase 5 — ABR Ladder ✅
 
-- ABR ladder (multiple renditions)
-- Subscriber fan-out simulation
-- Automated impairment cycle with report generation
+**Goal:** Both HLS and MoQ carry two renditions so ABR switching is observable.
+
+Deliverables:
+- Packager encodes two fMP4 HLS renditions: hi (source resolution/bitrate) and lo (640×360 @ 500 kbps)
+- `master.m3u8` lists both renditions with correct BANDWIDTH hints
+- moq-cli ingests `master.m3u8` and publishes both rendition tracks to the relay
+- Browser HLS panel: rendition indicator (`high 1/2` / `low 2/2`) with ABR switch events in timeline
+- New env vars: `ABR_LO_RESOLUTION`, `ABR_LO_BITRATE`
+
+Acceptance test: apply "bandwidth squeeze" profile; hls.js switches to low rendition (event logged), MoQ continues on the rendition hang-watch selects.
+
+---
+
+## Phase 6 — Subscriber Fan-out ✅
+
+**Goal:** Simulate N concurrent MoQ subscribers and observe relay behaviour.
+
+Deliverables:
+- `fanout/` service builds moq-cli at the same version tag as relay/publisher
+- `fanout.sh` spawns `FANOUT_N` concurrent `moq-cli watch` processes
+- Reports per-interval: subscriber count, connects, disconnects
+- Activated via Docker Compose profile: `docker compose --profile fanout up -d fanout`
+- New env vars: `FANOUT_N`, `FANOUT_RELAY_URL`, `FANOUT_DURATION`, `FANOUT_REPORT_SECS`
+
+Acceptance test: run 10 concurrent subscribers; relay logs show all 10 subscriptions; no crashes.
+
+---
+
+## Phase 7 — Automated Report ✅
+
+**Goal:** Unattended impairment cycle produces a Markdown comparison report.
+
+Deliverables:
+- `scripts/report.sh` applies all four profiles in sequence
+- Snapshots browser-pushed metrics at the end of each window
+- Generates `report.md` with per-profile side-by-side table (HLS vs MoQ, delta column)
+- Usage: `./scripts/report.sh [--out report.md] [--no-browser]`
+
+Acceptance test: `./scripts/report.sh --no-browser` completes and produces a valid `report.md` with non-empty metric rows.

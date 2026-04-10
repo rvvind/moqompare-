@@ -216,6 +216,8 @@ This opens the browser, cycles through all impairment profiles, and prints a met
 | `make ps` | Show container status |
 | `make clean` | Stop, remove containers + volumes, prune images |
 | `./scripts/demo.sh` | Full impairment demo cycle + metrics snapshot |
+| `./scripts/report.sh` | Automated cycle → `report.md` with HLS vs MoQ comparison table |
+| `docker compose --profile fanout up -d fanout` | Start N concurrent MoQ subscribers |
 
 ---
 
@@ -257,6 +259,9 @@ Edit `.env` (copied from `.env.example`) to tune:
 | **2** | ✅ | Same stream via MoQ alongside HLS |
 | **3** | ✅ | Impairment injection and event timeline |
 | **4** | ✅ | Full metrics and observability |
+| **5** | ✅ | ABR ladder — dual rendition, observable level switching |
+| **6** | ✅ | Subscriber fan-out simulation |
+| **7** | ✅ | Automated impairment report |
 
 See [`docs/phases.md`](docs/phases.md) for detailed acceptance criteria.  
 See [`docs/architecture.md`](docs/architecture.md) for design rationale.

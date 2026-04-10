@@ -1,0 +1,186 @@
+#!/usr/bin/env bash
+# ─────────────────────────────────────────────────────────────────────────────
+#  report.sh — automated impairment cycle with Markdown report
+#
+#  Usage:
+#    ./scripts/report.sh [--out report.md] [--no-browser]
+#
+#  Cycles through all impairment profiles, snapshots browser-pushed metrics
+#  after each phase, and writes a Markdown comparison table to --out.
+#
+#  Prerequisites: all services running (make up), browser open at :3000.
+# ─────────────────────────────────────────────────────────────────────────────
+set -euo pipefail
+
+cd "$(dirname "$0")/.."
+
+OUT_FILE="report.md"
+OPEN_BROWSER=1
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --out)        OUT_FILE="$2"; shift 2 ;;
+    --no-browser) OPEN_BROWSER=0; shift ;;
+    *)            shift ;;
+  esac
+done
+
+WEB_URL="${WEB_URL:-http://localhost:3000}"
+METRICS_URL="${WEB_URL}/metrics"
+IMPAIR_URL="${WEB_URL}/impair"
+
+SETTLE_SECS=15   # settle after applying a profile before collecting
+SAMPLE_SECS=20   # observation window per profile
+
+SNAP_DIR="$(mktemp -d)"
+trap 'rm -rf "${SNAP_DIR}"' EXIT
+
+log()  { echo "[report] $*"; }
+warn() { echo "[report] WARN: $*" >&2; }
+
+apply_profile() {
+  curl -sf -X POST "${IMPAIR_URL}/$1" --max-time 5 >/dev/null \
+    || warn "impair POST failed for '$1'"
+}
+
+snap() {
+  local label="$1"
+  curl -sf "${METRICS_URL}/snapshot" --max-time 5 \
+    > "${SNAP_DIR}/${label}.json" 2>/dev/null \
+    || echo '{}' > "${SNAP_DIR}/${label}.json"
+  log "snapshot saved: ${label}"
+}
+
+# ── Preflight ─────────────────────────────────────────────────────────────────
+log "checking services…"
+for i in $(seq 1 20); do
+  curl -sf "${WEB_URL}/health" >/dev/null 2>&1 && break
+  [[ $i -eq 20 ]] && { warn "web not reachable — run 'make up' first"; exit 1; }
+  sleep 1
+done
+
+if [[ $OPEN_BROWSER -eq 1 ]]; then
+  case "$(uname -s)" in
+    Darwin) open "${WEB_URL}" ;;
+    Linux)  xdg-open "${WEB_URL}" 2>/dev/null || true ;;
+  esac
+fi
+
+log "baseline settle (${SETTLE_SECS}s)…"
+apply_profile baseline
+sleep "${SETTLE_SECS}"
+snap baseline
+
+# ── Impairment cycle ──────────────────────────────────────────────────────────
+for profile in jitter squeeze outage; do
+  log ">>> ${profile} (${SAMPLE_SECS}s observation)"
+  apply_profile "${profile}"
+  sleep "${SAMPLE_SECS}"
+  snap "${profile}"
+  apply_profile baseline
+  log "    returning to baseline (5 s)"
+  sleep 5
+done
+
+snap baseline_final
+
+# ── Generate Markdown report ──────────────────────────────────────────────────
+TIMESTAMP=$(date -u "+%Y-%m-%d %H:%M UTC")
+
+python3 - "${SNAP_DIR}" "${OUT_FILE}" "${TIMESTAMP}" <<'PYEOF'
+import json, sys, os
+from pathlib import Path
+
+snap_dir, out_file, timestamp = sys.argv[1], sys.argv[2], sys.argv[3]
+
+def load(label):
+    p = Path(snap_dir) / f"{label}.json"
+    try:
+        return json.loads(p.read_text())
+    except Exception:
+        return {}
+
+def g(snap, proto, key):
+    """Get a gauge value, return float or None."""
+    try:
+        v = snap.get('gauges', {}).get(proto, {}).get(key)
+        return float(v) if v is not None else None
+    except (TypeError, ValueError):
+        return None
+
+def fmt(v, unit):
+    if v is None:
+        return '—'
+    if unit == 'ms':
+        return f'{v:.0f} ms'
+    if unit == 's':
+        return f'{v:.2f} s'
+    if unit == 'kbps':
+        return f'{v/1000:.0f} kb/s'
+    return str(v)
+
+snapshots = {
+    'baseline': load('baseline'),
+    'jitter':   load('jitter'),
+    'squeeze':  load('squeeze'),
+    'outage':   load('outage'),
+}
+
+profile_labels = {
+    'baseline': 'Baseline',
+    'jitter':   'Jitter + Loss (30 ms ±20 ms, 1% packet loss)',
+    'squeeze':  'Bandwidth Squeeze (500 kbps cap)',
+    'outage':   'Burst Outage (100% loss, 5 s)',
+}
+
+rows = [
+    ('Latency',       'latency_seconds',  's'),
+    ('Startup time',  'startup_ms',       'ms'),
+    ('Stalls',        'stalls_total',     None),
+    ('Stall duration','stall_duration_ms','ms'),
+    ('Bitrate',       'bitrate_bps',      'kbps'),
+]
+
+lines = [
+    '# moqompare — Impairment Comparison Report',
+    '',
+    f'Generated: {timestamp}',
+    '',
+    '> Metrics are browser-pushed snapshots taken at the end of each impairment window.',
+    '> MoQ baseline latency includes the 4.5 s jitter buffer; HLS is ~6-12 s.',
+    '',
+]
+
+for profile, label in profile_labels.items():
+    snap = snapshots[profile]
+    lines += [
+        f'## {label}',
+        '',
+        '| Metric | HLS | MoQ | Delta (MoQ − HLS) |',
+        '|--------|-----|-----|-------------------|',
+    ]
+    for row_label, key, unit in rows:
+        hls_v = g(snap, 'hls', key)
+        moq_v = g(snap, 'moq', key)
+        if hls_v is not None and moq_v is not None:
+            delta_v = moq_v - hls_v
+            delta = fmt(delta_v, unit)
+        else:
+            delta = '—'
+        lines.append(
+            f'| {row_label} | {fmt(hls_v, unit)} | {fmt(moq_v, unit)} | {delta} |'
+        )
+    lines.append('')
+
+lines += [
+    '---',
+    '',
+    '_Generated by `scripts/report.sh` — [moqompare](https://github.com/rvvind/moqompare-)_',
+]
+
+Path(out_file).write_text('\n'.join(lines) + '\n')
+print(f'[report] written → {out_file}')
+PYEOF
+
+log "done"
+log "────────────────────────────────────────"
+cat "${OUT_FILE}"

@@ -62,8 +62,10 @@ services:
       - HLS_LIST_SIZE=${HLS_LIST_SIZE:-5}
       - SOURCE_BITRATE=${SOURCE_BITRATE:-4000k}
       - SOURCE_RESOLUTION=${SOURCE_RESOLUTION:-1920x1080}
+      - ABR_LO_BITRATE=${ABR_LO_BITRATE:-500k}
+      - ABR_LO_RESOLUTION=${ABR_LO_RESOLUTION:-640x360}
     healthcheck:
-      test: ["CMD", "test", "-f", "/media/hls/stream.m3u8"]
+      test: ["CMD", "test", "-f", "/media/hls/master.m3u8"]
       interval: 5s
       timeout: 3s
       retries: 20
@@ -202,6 +204,27 @@ services:
       timeout: 3s
       retries: 6
       start_period: 5s
+
+  # ── 9. Fan-out subscriber simulator (Phase 6) ────────────────────────────
+  # Spawns FANOUT_N concurrent moq-cli watch processes against the relay.
+  # Inactive by default — start with:  docker compose --profile fanout up -d fanout
+  fanout:
+    build:
+      context: ./fanout
+    container_name: moqompare-fanout
+    restart: unless-stopped
+    profiles:
+      - fanout
+    networks:
+      - moqompare
+    environment:
+      - FANOUT_N=${FANOUT_N:-5}
+      - FANOUT_RELAY_URL=http://relay:4443
+      - FANOUT_BROADCAST=${FANOUT_BROADCAST:-stream}
+      - FANOUT_REPORT_SECS=${FANOUT_REPORT_SECS:-10}
+      - FANOUT_DURATION=${FANOUT_DURATION:-0}
+    depends_on:
+      - relay
 
   # ── 8. Metrics collector ──────────────────────────────────────────────────
   # Receives JSON metric reports from the browser (POST /report).
