@@ -1,0 +1,13 @@
+# Local video assets — not committed to the repo
+videos/
+
+# Environment overrides
+.env
+
+# OS / editor noise
+.DS_Store
+*.swp
+
+# Generated cluster auth credentials (created by make setup or manually)
+cluster_auth.jwk
+cluster_token

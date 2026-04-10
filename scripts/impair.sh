@@ -1,56 +1,56 @@
-#!/usr/bin/env sh
-# ─────────────────────────────────────────────
-#  scripts/impair.sh — apply / clear network
-#  impairment profiles via tc netem
+#!/usr/bin/env bash
+# ─────────────────────────────────────────────────────────────────────────────
+#  impair.sh — apply a network impairment profile to the moqompare lab
 #
-#  Usage:
-#    impair.sh baseline       clear all impairments
-#    impair.sh jitter         delay 30ms ±20ms, loss 1%
-#    impair.sh squeeze        rate limit to 500kbit
-#    impair.sh outage         100% loss for 5s then auto-clear
-#    impair.sh status         show current tc rules
+#  Usage: ./scripts/impair.sh <profile>
 #
-#  Requires NET_ADMIN capability (run with sudo or
-#  inside a container with cap_add: [NET_ADMIN]).
+#  Profiles:
+#    baseline  — remove all tc rules (clean slate)
+#    jitter    — 30 ms delay ±20 ms, 1 % packet loss
+#    squeeze   — 500 kbit/s bandwidth cap
+#    outage    — 100 % packet loss for 5 s, then auto-clear
+#    status    — show current profile
 #
-#  Phase 0: stub — prints what would be applied.
-#  Phase 3+: runs real tc commands.
-# ─────────────────────────────────────────────
-set -e
+#  Delegates to the impairment container's HTTP API (proxied through the
+#  web container at /impair/<profile>).
+# ─────────────────────────────────────────────────────────────────────────────
+set -euo pipefail
 
-IFACE="${IMPAIR_IFACE:-eth0}"
 PROFILE="${1:-}"
+API_BASE="${IMPAIR_API_URL:-http://localhost:3000/impair}"
 
 usage() {
   echo "Usage: $0 <baseline|jitter|squeeze|outage|status>"
   exit 1
 }
 
-[ -z "$PROFILE" ] && usage
-
-echo "[impair] interface: $IFACE  profile: $PROFILE"
-echo "[impair] NOTE: Phase 0 stub — no tc commands executed yet"
-echo ""
+[[ -z "$PROFILE" ]] && usage
 
 case "$PROFILE" in
-  baseline)
-    echo "[impair] Would run: tc qdisc del dev $IFACE root (clear all rules)"
-    ;;
-  jitter)
-    echo "[impair] Would run: tc qdisc add dev $IFACE root netem delay 30ms 20ms loss 1%"
-    ;;
-  squeeze)
-    echo "[impair] Would run: tc qdisc add dev $IFACE root tbf rate 500kbit burst 32kbit latency 400ms"
-    ;;
-  outage)
-    echo "[impair] Would run: tc qdisc add dev $IFACE root netem loss 100%"
-    echo "[impair] Would sleep 5s then clear (baseline)"
-    ;;
   status)
-    echo "[impair] Would run: tc qdisc show dev $IFACE"
+    curl -sf "${API_BASE}/status" | python3 -c \
+      "import json,sys; d=json.load(sys.stdin); print('[impair] current profile:', d.get('profile','unknown'))"
+    exit 0
     ;;
+  baseline|jitter|squeeze|outage) ;;
   *)
-    echo "[impair] Unknown profile: $PROFILE"
+    echo "Unknown profile: $PROFILE"
     usage
     ;;
 esac
+
+echo "[impair] applying profile: $PROFILE"
+response=$(curl -sf -X POST "${API_BASE}/${PROFILE}" \
+  -H "Accept: application/json" --max-time 5)
+
+echo "$response" | python3 -c "
+import json, sys
+d = json.load(sys.stdin)
+if d.get('ok'):
+    print('[impair] OK — profile:', d.get('profile'))
+    if d.get('auto_clear_secs'):
+        print('[impair] auto-clears in', d['auto_clear_secs'], 's')
+else:
+    print('[impair] ERROR:', d.get('errors', 'unknown'))
+    sys.exit(1)
+"
