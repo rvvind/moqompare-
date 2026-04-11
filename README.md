@@ -22,10 +22,9 @@ A local lab that plays the same live video stream over HLS and MoQ side by side,
 - `scripts/demo.sh` cycles through all impairment profiles and prints a final metrics snapshot
 
 **Known limitations:**
-- MoQ playback has ~4–5 s latency due to the HLS ingest burst pattern (2 s segments arrive at once)
-- `tc netem` with `nsenter` works on Docker Desktop for Mac; untested on rootless Docker on Linux
-- Metrics are browser-pushed; relay-side metrics (subscriber count, queue depth) not yet collected
-- First `make up` compiles moq-relay and moq-cli from Rust source — allow 5–10 min on first build
+- MoQ playback has ~4–5 s latency due to HLS ingest burst pattern (2 s segments)
+- `tc netem` requires a Linux Docker runtime that supports privileged containers, `pid: host`, and network namespace entry
+- Metrics are browser-pushed (pull-based relay metrics not yet implemented)
 
 ---
 
@@ -73,7 +72,9 @@ A local lab that plays the same live video stream over HLS and MoQ side by side,
 ## Prerequisites
 
 - Docker Engine 24+
-- Docker Compose v2 plugin (`docker compose` not `docker-compose`)
+- Docker Compose available either as the v2 plugin (`docker compose`) or the standalone `docker-compose` binary
+- Docker runtime available via Docker Desktop or Colima
+- If using Colima, start it with `colima start --runtime docker` before running `make setup` or `make up`
 - Internet access during `make setup` (pulls images, downloads hls.js)
 
 ---
@@ -311,14 +312,20 @@ docker compose exec impairment docker inspect --format '{{.State.Pid}}' moqompar
 ```
 If `docker inspect` fails, the socket bind may need `DOCKER_HOST` set — check Docker Desktop settings.
 
+**`make setup` / `make up` says Docker daemon is not reachable:**  
+If your active Docker context is `colima`, start Colima first:
+```sh
+colima start --runtime docker
+```
+
 **`make setup` fails on image pull:**  
 Check internet connectivity. The `web` build downloads hls.js from jsDelivr CDN; `relay` and `publisher` builds clone from GitHub.
 
 **First `make up` hangs for minutes:**  
 Normal — Rust compiles `moq-relay` and `moq-cli` from source. Subsequent starts use the build cache.
 
-**Latency > 20 s on HLS:**  
-Check `docker compose logs packager` for segment write errors. Restart with `make down && make up`.
+**Latency > 20 s:**  
+This is unusual. Check `docker compose logs packager` for segment write errors. Restart with `make down && make up`.
 
 ---
 

@@ -16,6 +16,20 @@ set -euo pipefail
 
 cd "$(dirname "$0")/.."
 
+resolve_compose_cmd() {
+  if docker compose version >/dev/null 2>&1; then
+    COMPOSE_CMD="docker compose"
+    return 0
+  fi
+  if command -v docker-compose >/dev/null 2>&1; then
+    COMPOSE_CMD="docker-compose"
+    return 0
+  fi
+
+  echo "[demo] ERROR: Docker Compose is required but not available" >&2
+  exit 1
+}
+
 OPEN_BROWSER=1
 for arg in "$@"; do
   [[ "$arg" == "--no-browser" ]] && OPEN_BROWSER=0
@@ -28,9 +42,11 @@ IMPAIR_URL="${WEB_URL}/impair"
 log()  { echo "[demo] $*"; }
 warn() { echo "[demo] WARN: $*" >&2; }
 
+resolve_compose_cmd
+
 # ── 1. Ensure services are up ─────────────────────────────────────────────────
 log "checking docker compose services…"
-if ! docker compose ps --quiet 2>/dev/null | grep -q .; then
+if ! $COMPOSE_CMD ps --quiet 2>/dev/null | grep -q .; then
   log "no running containers found — starting with 'make up'…"
   make up
 fi

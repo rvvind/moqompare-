@@ -4,7 +4,7 @@
 
 .PHONY: setup up down logs clean ps shell-source shell-packager shell-web cluster-credentials help
 
-COMPOSE := docker compose
+COMPOSE := $(shell if docker compose version >/dev/null 2>&1; then printf '%s' 'docker compose'; elif command -v docker-compose >/dev/null 2>&1; then printf '%s' 'docker-compose'; else printf '%s' 'docker compose'; fi)
 ENV_FILE := .env
 
 # ── Bootstrap ─────────────────────────────────────────────────────────────────
