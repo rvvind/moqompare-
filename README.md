@@ -6,51 +6,54 @@ A local lab that plays the same live video stream over HLS and MoQ side by side,
 
 ---
 
-## Current phase: Phase 4 — Metrics & Observability
+## Current phase: Phase 7 complete
 
 **What works:**
-- Live video source (FFmpeg testsrc2 + UTC timestamp overlay, 1280×720 @ 30 fps)
-- Rolling fMP4 HLS manifest served over HTTP; hls.js player with startup, latency, stall, bitrate, and resolution metrics
-- **MoQ path**: moq-cli (built from source at moq-relay-v0.10.17) ingests HLS → moq-relay (QUIC/WebTransport) → hang-watch browser player
-- Both HLS and MoQ play the same live source with visible timestamp side by side
-- Per-player metrics: latency, startup time, stall count, stall duration, bitrate, resolution
-- **Impairment controller**: privileged sidecar applies `tc netem` rules to origin and relay network namespaces via `docker inspect` + `nsenter`
-- Impairment profile buttons in the UI (Baseline, Jitter+Loss, Bandwidth Squeeze, Burst Outage) wired to HTTP API
-- Event timeline showing impairment transitions and player events
-- **Metrics collector**: browser reports metrics every 5 s; Prometheus endpoint at `:9090/metrics`
-- JSON snapshot at `:9090/snapshot` (also proxied via `:3000/metrics/snapshot`)
-- `scripts/demo.sh` cycles through all impairment profiles and prints a final metrics snapshot
+- Live video source: loops `.mp4` files from `/videos/` (or falls back to FFmpeg `testsrc2`) with a visible UTC timestamp overlay, output as MPEG-TS into a named pipe
+- Source loops using a pre-expanded concat playlist (5 files × 999 reps) — no FIFO starvation gaps at loop boundaries
+- **Dual-rendition fMP4 HLS**: hi @ source resolution/bitrate, lo @ 640×360 / 500 kbps; ABR master playlist served by nginx origin
+- **MoQ path**: two moq-cli publishers (hi + lo renditions) ingest HLS → moq-relay (QUIC/WebTransport) → hang-watch browser player with custom ABR logic
+- Side-by-side comparison UI at `:3000` with per-player metrics: startup time, live latency, stall count, bitrate, resolution
+- **Presentation workspace** at `:3000/present.html`: single-screen live demo with scene flow, shared telemetry, live architecture map, and presenter controls rail
+- **Impairment controller**: `tc netem` applied to origin and relay network namespaces via Docker socket + `nsenter`; five profiles including Stale Manifest
+- **Manifest proxy** at `:8091`: can freeze the HLS manifest independently of segment delivery to demonstrate manifest-less MoQ advantage
+- **Metrics collector**: browser reports every 5 s; Prometheus endpoint at `:9090/metrics`; JSON snapshot at `:9090/snapshot`
+- **Fan-out simulation**: N concurrent moq-cli subscribers via Docker Compose `fanout` profile
+- `scripts/report.sh` cycles all impairment profiles and generates a Markdown comparison table with HLS vs MoQ deltas
 
 **Known limitations:**
 - MoQ playback has ~4–5 s latency due to HLS ingest burst pattern (2 s segments)
 - `tc netem` requires a Linux Docker runtime that supports privileged containers, `pid: host`, and network namespace entry
-- Metrics are browser-pushed (pull-based relay metrics not yet implemented)
+- Metrics are browser-pushed; relay-side metrics not yet instrumented
 
 ---
 
 ## Architecture
 
 ```
-  source (FFmpeg testsrc2 + UTC timestamp overlay)
+  source (FFmpeg: looped /videos/*.mp4 or testsrc2 + UTC timestamp overlay)
       │  MPEG-TS via named pipe (/media/source.pipe)
-  packager (FFmpeg fMP4 HLS → /media/hls/)
+  packager (FFmpeg: dual-rendition fMP4 HLS → /media/hls/)
       │
-      ├─────────────────────────────────────────────┐
-      │  HLS path                                   │  MoQ path
-      ▼                                             ▼
-  origin (nginx :8080)                    publisher (moq-cli)
-      │  /hls/stream.m3u8                     │  polls master.m3u8
-      │                                       ▼
-      │                               relay (moq-relay :4443 QUIC+TCP)
-      │                                       │  WebTransport
+      ├────────────────────────────────────────────────────┐
+      │  HLS path                                          │  MoQ path
+      ▼                                                    ▼
+  origin (nginx :8080)                    publisher-hi / publisher-lo (moq-cli)
+      │  /hls/master.m3u8                     │  poll master_hi/lo.m3u8
+      │  /hls/stream_hi.m3u8                  ▼
+      │  /hls/stream_lo.m3u8         relay (moq-relay :4443 QUIC+TCP)
+      ▼                                       │  WebTransport
+  manifest-proxy (:8091)                      │
+      │  can freeze manifest                  │
       ▼                                       │
   web (nginx :3000) ◄─────────────────────────┘
-      │  /hls/ → origin
-      │  /impair/ → impairment (:8090)
-      │  /metrics/ → metrics (:9090)
+      │  /hls/           → manifest-proxy → origin
+      │  /impair/        → impairment (:8090)
+      │  /metrics/       → metrics (:9090)
       ▼
   Browser: HLS player (hls.js) │ MoQ player (hang-watch)
            impairment buttons  │ event timeline
+           present.html        │ presentation workspace
 
   impairment (:8090)  — tc netem via nsenter, uses Docker socket
   metrics    (:9090)  — Prometheus endpoint, receives browser reports
@@ -58,10 +61,12 @@ A local lab that plays the same live video stream over HLS and MoQ side by side,
 
 | Service | Role | Port |
 |---------|------|------|
-| `source` | FFmpeg: testsrc2 + UTC timestamp → named pipe | — |
-| `packager` | FFmpeg: MPEG-TS pipe → fMP4 HLS segments + master playlist | — |
+| `source` | FFmpeg: looped mp4 files or testsrc2 + UTC timestamp → named pipe | — |
+| `packager` | FFmpeg: MPEG-TS → dual-rendition fMP4 HLS segments + master playlists | — |
 | `origin` | nginx: serves `/hls/` over HTTP | 8080 |
-| `publisher` | moq-cli (built from source): HLS ingest → QUIC publish | — |
+| `manifest-proxy` | Go proxy: transparent pass-through or manifest freeze | 8091 |
+| `publisher-hi` | moq-cli (built from source): hi-rendition HLS ingest → QUIC publish | — |
+| `publisher-lo` | moq-cli (built from source): lo-rendition HLS ingest → QUIC publish | — |
 | `relay` | moq-relay (built from source): QUIC relay + HTTP cert endpoint | **4443** |
 | `web` | nginx: browser UI, proxies `/hls/`, `/impair/`, `/metrics/` | **3000** |
 | `impairment` | Python3: `tc netem` HTTP API via nsenter | 8090 |
@@ -72,10 +77,10 @@ A local lab that plays the same live video stream over HLS and MoQ side by side,
 ## Prerequisites
 
 - Docker Engine 24+
-- Docker Compose available either as the v2 plugin (`docker compose`) or the standalone `docker-compose` binary
-- Docker runtime available via Docker Desktop or Colima
-- If using Colima, start it with `colima start --runtime docker` before running `make setup` or `make up`
-- Internet access during `make setup` (pulls images, downloads hls.js)
+- Docker Compose available as the v2 plugin (`docker compose`) or standalone `docker-compose`
+- Docker runtime via Docker Desktop or Colima
+- If using Colima: `colima start --runtime docker` before running `make setup` or `make up`
+- Internet access during `make setup` (pulls images, downloads hls.js, clones moq-rs)
 
 ---
 
@@ -86,7 +91,7 @@ A local lab that plays the same live video stream over HLS and MoQ side by side,
 git clone <repo-url> moqompare
 cd moqompare
 
-# 2. Bootstrap: copy .env, pull base images, build custom images
+# 2. Bootstrap: copy .env, generate cluster credentials, pull + build images
 make setup
 
 # 3. Start all services
@@ -94,27 +99,28 @@ make up
 
 # 4. Open the comparison UI
 open http://localhost:3000
-# (or visit http://localhost:3000 in any browser)
 
-# 5. Watch logs
+# 5. Open the presentation workspace
+open http://localhost:3000/present.html
+
+# 6. Watch logs
 make logs
 
-# 6. Stop everything
+# 7. Stop everything
 make down
 ```
 
 **Expected startup sequence:**
 
-*First run — Rust compilation:* `relay` and `publisher` build from source (~5–10 min). Subsequent runs use the Docker layer cache and start in seconds.
+*First run — Rust compilation:* `relay` and `publisher-hi/lo` build moq-rs from source (~5–10 min). Subsequent runs use the Docker layer cache and start in seconds.
 
-1. `source` starts → creates FIFO → healthcheck passes (~10 s)
+1. `source` starts → creates FIFO and begins encoding → healthcheck passes (~10 s)
 2. `packager` reads FIFO → writes first HLS segments → healthcheck passes (~20 s)
 3. `origin` starts → serves `/hls/` immediately
 4. `relay` starts → generates TLS cert for `localhost,relay` → healthcheck passes
-5. `publisher` connects to relay → polls `master.m3u8` → starts ingesting HLS
-6. `web` starts → proxies `/hls/`, `/impair/`, `/metrics/`
-7. `impairment` + `metrics` start
-8. Browser: HLS plays within ~5–10 s; MoQ plays within ~10–15 s
+5. `publisher-hi` and `publisher-lo` connect to relay → poll master playlists → start ingesting HLS
+6. `manifest-proxy`, `web`, `impairment`, `metrics` start
+7. Browser: HLS plays within ~5–10 s; MoQ plays within ~10–15 s
 
 ---
 
@@ -126,83 +132,67 @@ make down
 make ps
 ```
 
-All 7 services should show `healthy` or `running` (publisher/relay/metrics show `running`).
+All services should show `healthy` or `running`.
 
-### 2. Verify HLS manifest is updating
+### 2. Verify HLS ABR manifest is updating
 
 ```sh
-curl http://localhost:8080/hls/stream.m3u8
+curl http://localhost:8080/hls/master.m3u8
 ```
 
-Expected: a valid M3U8 playlist with `#EXT-X-MAP` (fMP4 init) and several `.m4s` segment entries.
+Expected: a valid M3U8 master playlist referencing `stream_hi.m3u8` and `stream_lo.m3u8`.
+
+```sh
+curl http://localhost:8080/hls/stream_hi.m3u8
+```
 
 Run it twice, 3 seconds apart — segment entries should change (rolling manifest).
 
-### 3. Verify segments are downloadable
+### 3. Verify HLS browser playback
 
-```sh
-curl -o /dev/null -w "%{http_code} %{size_download} bytes\n" \
-  http://localhost:8080/hls/init.mp4
-```
-
-Expected: `200 <some size> bytes`
-
-### 4. Verify HLS browser playback
-
-Open `http://localhost:3000`. Within ~10 s you should see:
+Open `http://localhost:3000`. Within ~10 s:
 - HLS panel: live video with `SRC HH:MM:SS UTC` timestamp visible
 - Startup time shown in milliseconds
 - Latency estimate updating (typically 6–12 s for HLS with 2 s segments)
 - Stall counter stays at 0 under normal conditions
 
-### 5. Verify MoQ playback
+### 4. Verify MoQ playback
 
 Within ~15 s the MoQ panel should also show live video:
 
 ```sh
-# Check publisher is ingesting and publishing
-docker compose logs publisher --tail=20
-
-# Check relay is receiving the broadcast
-docker compose logs relay --tail=20
-# Look for: negotiated version=moq-lite-03 and subscribe started track=0.hang
+docker-compose logs publisher-hi --tail=20
+docker-compose logs relay --tail=20
 ```
 
 If the MoQ panel shows "Waiting for broadcast" after 30 s, reload the page once.
 
-### 6. Acceptance test (3-minute stability)
+### 5. Verify metrics collector
 
-Leave the browser tab open and observe:
-- Timestamp advances in real time (no freezes)
-- Stall counter stays at 0
-- Latency stays roughly constant
-
-### 7. Verify metrics collector
-
-After both players have been running for at least 5 seconds, the browser begins pushing metrics:
+After both players have been running for at least 5 seconds:
 
 ```sh
-# JSON snapshot
 curl http://localhost:9090/snapshot
-
-# Prometheus format
-curl http://localhost:9090/metrics
-```
-
-Or via the web proxy:
-```sh
 curl http://localhost:3000/metrics/snapshot
 ```
 
-Expected output includes `player_latency_seconds`, `player_stalls_total`, and `player_startup_ms` for both `hls` and `moq` protocols.
+Expected: `player_latency_seconds`, `player_stalls_total`, and `player_startup_ms` for both `hls` and `moq`.
 
-### 8. Full demo with impairment cycle
+### 6. Full demo with impairment cycle
 
 ```sh
 ./scripts/demo.sh
 ```
 
-This opens the browser, cycles through all impairment profiles, and prints a metrics snapshot at the end.
+Opens the browser, cycles through all impairment profiles, prints a metrics snapshot.
+
+### 7. Automated comparison report
+
+```sh
+./scripts/report.sh --out report.md
+```
+
+Cycles all profiles and writes a Markdown table comparing HLS vs MoQ latency, stalls, and bitrate under each condition.
 
 ---
 
@@ -210,7 +200,7 @@ This opens the browser, cycles through all impairment profiles, and prints a met
 
 | Target | Description |
 |--------|-------------|
-| `make setup` | Copy `.env.example` → `.env`, pull + build images |
+| `make setup` | Copy `.env.example` → `.env`, generate cluster credentials, pull + build images |
 | `make up` | Start all services (detached) |
 | `make down` | Stop all services |
 | `make logs` | Stream logs from all services |
@@ -218,20 +208,21 @@ This opens the browser, cycles through all impairment profiles, and prints a met
 | `make clean` | Stop, remove containers + volumes, prune images |
 | `./scripts/demo.sh` | Full impairment demo cycle + metrics snapshot |
 | `./scripts/report.sh` | Automated cycle → `report.md` with HLS vs MoQ comparison table |
-| `docker compose --profile fanout up -d fanout` | Start N concurrent MoQ subscribers |
+| `docker-compose --profile fanout up -d fanout` | Start N concurrent MoQ subscribers |
 
 ---
 
-## Impairment profiles (Phase 3)
+## Impairment profiles
 
-Applied via `scripts/impair.sh <profile>`:
+Applied via the UI, `scripts/impair.sh <profile>`, or `POST http://localhost:8090/impair/<profile>`:
 
-| Profile | Effect |
-|---------|--------|
-| `baseline` | No impairment |
-| `jitter` | 30 ms delay ± 20 ms, 1% packet loss |
-| `squeeze` | 500 kbit/s rate cap |
-| `outage` | 100% loss for 5 s, then clear |
+| Profile | Effect | HLS impact | MoQ impact |
+|---------|--------|------------|------------|
+| `baseline` | No impairment | Clean reference | Clean reference |
+| `jitter` | 30 ms delay ± 20 ms, 1% loss | TCP throughput collapses; hls.js drops to lo rendition | QUIC recovers loss via retransmit; no rendition switch |
+| `squeeze` | 500 kbit/s rate cap | hls.js switches to lo rendition at 640×360 | MoQ ABR switches to `stream_lo` once bandwidth < 3.6 Mbps |
+| `outage` | 100% loss for 5 s, then clear | Buffer drains; full rebuffer on recovery | QUIC reconnects in ~1 RTT; faster recovery |
+| `stale_manifest` | Manifest proxy freezes HLS playlist for 30 s | Player stalls (manifest not advancing); segments and bandwidth healthy | No effect — MoQ is manifest-less |
 
 ---
 
@@ -242,12 +233,16 @@ Edit `.env` (copied from `.env.example`) to tune:
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `SOURCE_FPS` | `30` | Frame rate |
-| `SOURCE_RESOLUTION` | `1280x720` | Video resolution |
-| `SOURCE_BITRATE` | `1500k` | x264 target bitrate |
+| `SOURCE_RESOLUTION` | `1920x1080` | Video resolution |
+| `SOURCE_BITRATE` | `4000k` | x264 target bitrate for hi rendition |
 | `HLS_SEGMENT_DURATION` | `2` | Seconds per segment |
-| `HLS_LIST_SIZE` | `5` | Segments kept in manifest |
+| `HLS_LIST_SIZE` | `5` | Segments kept in rolling manifest |
+| `ABR_LO_BITRATE` | `500k` | Lo-rendition bitrate |
+| `ABR_LO_RESOLUTION` | `640x360` | Lo-rendition resolution |
 | `ORIGIN_PORT` | `8080` | Host port for HLS origin |
+| `RELAY_PORT` | `4443` | Host port for MoQ relay (QUIC + TCP) |
 | `WEB_PORT` | `3000` | Host port for browser UI |
+| `VIDEOS_DIR` | `./videos` | Directory of `.mp4` files to loop as live source |
 
 ---
 
@@ -263,6 +258,7 @@ Edit `.env` (copied from `.env.example`) to tune:
 | **5** | ✅ | ABR ladder — dual rendition, observable level switching |
 | **6** | ✅ | Subscriber fan-out simulation |
 | **7** | ✅ | Automated impairment report |
+| **8** | ✅ | Presentation workspace with scene flow and live architecture map |
 
 See [`docs/phases.md`](docs/phases.md) for detailed acceptance criteria.  
 See [`docs/architecture.md`](docs/architecture.md) for design rationale.
@@ -272,15 +268,23 @@ See [`docs/architecture.md`](docs/architecture.md) for design rationale.
 ## Repository layout
 
 ```
-infra/       nginx configs, future tc impairment scripts
-packager/    HLS packager (FFmpeg fMP4 HLS output)
-publisher/   MoQ fragment publisher (Phase 2)
-relay/       MoQ relay (Phase 2)
-source/      Live source generator (FFmpeg testsrc2 + drawtext)
-web/         Browser UI: hls.js player, metrics, impairment controls
-metrics/     Metrics collector (Phase 4)
-scripts/     setup, run, demo, impair scripts
-docs/        Architecture notes and phase plan
+infra/            nginx configs (origin, web), future impairment scripts
+packager/         FFmpeg dual-rendition fMP4 HLS packager
+publisher/        moq-cli publisher (hi + lo renditions)
+relay/            moq-relay (QUIC/WebTransport)
+manifest-proxy/   Go HLS manifest proxy (supports freeze for Stale Manifest impairment)
+source/           Live source generator (looped mp4 or FFmpeg testsrc2 + drawtext)
+web/              Browser UI: hls.js player, hang-watch MoQ player, presentation workspace
+  static/
+    index.html              Side-by-side comparison UI
+    present.html            Presentation workspace
+    present-control.html    Presenter control panel
+    presentation/           Shared CSS + JS modules for presentation mode
+metrics/          Prometheus metrics collector (browser-push model)
+impairment/       tc netem HTTP API (Python, privileged)
+fanout/           Concurrent MoQ subscriber simulation
+scripts/          setup, run, demo, impair, report scripts
+docs/             Architecture notes and phase plan
 ```
 
 ---
@@ -288,44 +292,39 @@ docs/        Architecture notes and phase plan
 ## Troubleshooting
 
 **`source` container stuck in starting:**  
-The source creates a named FIFO; FFmpeg blocks until the packager opens it. This is normal — the packager starts after source is healthy.
+The source creates a named FIFO; FFmpeg blocks until the packager opens it. This is normal — packager starts after source is healthy.
 
 **No HLS video in browser after 30 s:**  
 ```sh
-docker compose logs packager          # look for ffmpeg errors
-docker compose exec origin ls /usr/share/nginx/html/hls/  # should list stream.m3u8
+docker-compose logs packager          # look for ffmpeg errors
+docker-compose exec origin ls /usr/share/nginx/html/hls/
+# should list master.m3u8, stream_hi.m3u8, stream_lo.m3u8, init_hi.mp4, init_lo.mp4
 ```
 
 **MoQ panel shows "Waiting for broadcast" indefinitely:**  
 ```sh
-docker compose logs publisher --tail=30   # should show HLS segments being published
-docker compose logs relay --tail=30       # look for negotiated version=moq-lite-03
+docker-compose logs publisher-hi --tail=30   # should show HLS segments being published
+docker-compose logs relay --tail=30          # look for negotiated version=moq-lite-03
 ```
-If the publisher logs show `catalog.json err=not found`, the publisher image is the wrong version — rebuild with `docker compose up -d --build publisher`.  
-If the relay logs only show `moq-lite-01` connections, the relay image is stale — rebuild with `docker compose up -d --build relay`.
+If publisher logs show `catalog.json err=not found`, rebuild: `docker-compose up -d --build publisher-hi publisher-lo`.
 
 **Impairment buttons return "pid not found":**  
-The impairment container uses the Docker socket to find container PIDs. Check:
 ```sh
-docker compose logs impairment | head -10   # startup smoke-test shows pid OK or NOT FOUND
-docker compose exec impairment docker inspect --format '{{.State.Pid}}' moqompare-origin
+docker-compose logs impairment | head -10
+docker-compose exec impairment docker inspect --format '{{.State.Pid}}' moqompare-origin
 ```
-If `docker inspect` fails, the socket bind may need `DOCKER_HOST` set — check Docker Desktop settings.
+If `docker inspect` fails, the socket bind may need `DOCKER_HOST` set — check Docker Desktop / Colima settings.
+
+**Playback stalls periodically (video looping):**  
+Ensure the source container is running the updated image. The old `‑stream_loop ‑1` flag caused FFmpeg to rescan all input files at each loop boundary, starving the FIFO. The current image uses a pre-expanded 999-repetition playlist so FFmpeg runs for hours without restarting.
 
 **`make setup` / `make up` says Docker daemon is not reachable:**  
-If your active Docker context is `colima`, start Colima first:
 ```sh
 colima start --runtime docker
 ```
 
-**`make setup` fails on image pull:**  
-Check internet connectivity. The `web` build downloads hls.js from jsDelivr CDN; `relay` and `publisher` builds clone from GitHub.
-
 **First `make up` hangs for minutes:**  
 Normal — Rust compiles `moq-relay` and `moq-cli` from source. Subsequent starts use the build cache.
-
-**Latency > 20 s:**  
-This is unusual. Check `docker compose logs packager` for segment write errors. Restart with `make down && make up`.
 
 ---
 
