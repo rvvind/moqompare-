@@ -36,6 +36,10 @@ A dedicated single-screen view for live demos. A live architecture map shows the
 
 ![Presentation workspace — presenter controls rail](docs/screenshots/presentation-controls.png)
 
+The audience telemetry panel shows live startup times, latency-to-play-head, drift, bitrate, and stall counts for both protocols side by side — updated every 2 seconds.
+
+![Presentation workspace — audience telemetry and readiness panel](docs/screenshots/presenter-metrics.png)
+
 ---
 
 ### Fan-out simulation
