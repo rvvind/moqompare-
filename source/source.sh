@@ -45,12 +45,21 @@ build_playlist() {
   if [ -z "$FILES" ]; then
     return 1   # no files
   fi
+  # Pre-expand the playlist 999 times so FFmpeg runs for hours before the
+  # outer loop ever needs to restart.  The concat demuxer advances from one
+  # entry to the next with no seek/restart gap, avoiding the FIFO starvation
+  # that -stream_loop -1 causes when it internally reseeks the whole list.
+  LOOP_REPS=999
   printf "" > "$PLAYLIST"
-  for f in $FILES; do
-    printf "file '%s'\n" "$f" >> "$PLAYLIST"
+  i=0
+  while [ $i -lt $LOOP_REPS ]; do
+    for f in $FILES; do
+      printf "file '%s'\n" "$f" >> "$PLAYLIST"
+    done
+    i=$((i + 1))
   done
-  echo "[source] playlist:"
-  sed 's/^/[source]   /' "$PLAYLIST"
+  FILE_COUNT=$(echo "$FILES" | wc -l | tr -d ' ')
+  echo "[source] playlist: ${FILE_COUNT} file(s) × ${LOOP_REPS} reps = $(wc -l < "$PLAYLIST" | tr -d ' ') entries"
   return 0
 }
 
@@ -68,7 +77,6 @@ while true; do
       -hide_banner \
       -loglevel warning \
       -re \
-      -stream_loop -1 \
       -f concat \
       -safe 0 \
       -i "$PLAYLIST" \
@@ -120,6 +128,5 @@ x=20:y=20" \
       "${PIPE}" 2>&1 | sed 's/^/[source] /'
   fi
 
-  echo "[source] FFmpeg exited — restarting in 2 s..."
-  sleep 2
+  echo "[source] FFmpeg exited — restarting..."
 done
