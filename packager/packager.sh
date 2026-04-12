@@ -34,6 +34,42 @@ LO_RESOLUTION="${ABR_LO_RESOLUTION:-640x360}"
 
 mkdir -p "${HLS_DIR}"
 
+# ── HLS state management ──────────────────────────────────────────────────
+next_start_number() {
+  LAST_NUM=$(
+    find "${HLS_DIR}" -maxdepth 1 -type f -name '*.m4s' -print 2>/dev/null \
+      | sed -n 's|.*_\([0-9][0-9]*\)\.m4s$|\1|p' \
+      | awk '
+          {
+            sub(/^0+/, "", $0)
+            if ($0 == "") $0 = 0
+            if ($0 > max) max = $0
+          }
+          END { print max + 0 }
+        '
+  )
+
+  if [ -n "${LAST_NUM}" ]; then
+    echo $((LAST_NUM + 1))
+  else
+    echo 0
+  fi
+}
+
+clear_hls_state() {
+  STALE_FILES=$(
+    find "${HLS_DIR}" -maxdepth 1 -type f \
+      \( -name '*.m3u8' -o -name '*.mp4' -o -name '*.m4s' -o -name '*.cmfv' \) \
+      | wc -l | tr -d ' '
+  )
+
+  find "${HLS_DIR}" -maxdepth 1 -type f \
+    \( -name '*.m3u8' -o -name '*.mp4' -o -name '*.m4s' -o -name '*.cmfv' \) \
+    -delete
+
+  echo "[packager] cleared ${STALE_FILES} stale HLS file(s)"
+}
+
 # ── Write master playlist ─────────────────────────────────────────────────
 write_master() {
   HI_BPS=$(echo "${HI_BITRATE}" | sed 's/[kK]$/000/;s/[mM]$/000000/')
@@ -74,19 +110,22 @@ EOF
   echo "[packager] master playlists written  hi=${HI_RESOLUTION}@${HI_BITRATE}  lo=${LO_RESOLUTION}@${LO_BITRATE}"
 }
 
-write_master
-
-# ── Wait for source FIFO ──────────────────────────────────────────────────
-echo "[packager] waiting for source FIFO at ${PIPE}..."
-while [ ! -p "${PIPE}" ]; do sleep 0.5; done
-echo "[packager] FIFO ready — starting dual-rendition HLS packaging"
-echo "[packager] seg=${SEG_DUR}s  list=${LIST_SIZE}"
-
 HLS_FLAGS="delete_segments+append_list+independent_segments"
 LO_W=$(echo "${LO_RESOLUTION}" | cut -dx -f1)
 LO_H=$(echo "${LO_RESOLUTION}" | cut -dx -f2)
 
 while true; do
+  START_NUMBER=$(next_start_number)
+  clear_hls_state
+
+  # ── Wait for source FIFO ────────────────────────────────────────────────
+  echo "[packager] waiting for source FIFO at ${PIPE}..."
+  while [ ! -p "${PIPE}" ]; do sleep 0.5; done
+
+  write_master
+  echo "[packager] FIFO ready — starting dual-rendition HLS packaging"
+  echo "[packager] seg=${SEG_DUR}s  list=${LIST_SIZE}  start=${START_NUMBER}"
+
   ffmpeg \
     -hide_banner \
     -loglevel warning \
@@ -103,6 +142,7 @@ while true; do
     -f hls \
     -hls_time "${SEG_DUR}" -hls_list_size "${LIST_SIZE}" \
     -hls_flags "${HLS_FLAGS}" \
+    -start_number "${START_NUMBER}" \
     -hls_segment_type fmp4 \
     -hls_fmp4_init_filename "init_hi.mp4" \
     -hls_segment_filename "${HLS_DIR}/seg_hi_%05d.m4s" \
@@ -115,6 +155,7 @@ while true; do
     -f hls \
     -hls_time "${SEG_DUR}" -hls_list_size "${LIST_SIZE}" \
     -hls_flags "${HLS_FLAGS}" \
+    -start_number "${START_NUMBER}" \
     -hls_segment_type fmp4 \
     -hls_fmp4_init_filename "init_lo.mp4" \
     -hls_segment_filename "${HLS_DIR}/seg_lo_%05d.m4s" \

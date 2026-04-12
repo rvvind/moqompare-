@@ -37,6 +37,10 @@ check_docker_daemon() {
   exit 1
 }
 
+ensure_cluster_credentials() {
+  python3 scripts/generate_cluster_credentials.py
+}
+
 if [ ! -f .env ]; then
   echo "[run] .env not found — run 'scripts/setup.sh' first"
   exit 1
@@ -44,6 +48,7 @@ fi
 
 check_docker_compose
 check_docker_daemon
+ensure_cluster_credentials
 
 echo "==> Starting moqompare..."
 $COMPOSE_CMD up -d

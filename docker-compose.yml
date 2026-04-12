@@ -66,7 +66,11 @@ services:
       - ABR_LO_RESOLUTION=${ABR_LO_RESOLUTION:-640x360}
       - SOURCE_FPS=${SOURCE_FPS:-30}
     healthcheck:
-      test: ["CMD", "test", "-f", "/media/hls/master.m3u8"]
+      test:
+        [
+          "CMD-SHELL",
+          "test -f /media/hls/stream_hi.m3u8 && test -f /media/hls/stream_lo.m3u8 && test -f /media/hls/init_hi.mp4 && test -f /media/hls/init_lo.mp4 && ls /media/hls/seg_hi_*.m4s >/dev/null 2>&1 && ls /media/hls/seg_lo_*.m4s >/dev/null 2>&1",
+        ]
       interval: 5s
       timeout: 3s
       retries: 20
@@ -190,7 +194,30 @@ services:
       retries: 12
       start_period: 10s
 
-  # ── 6. Browser UI ─────────────────────────────────────────────────────────
+  # ── 6. Manifest proxy ─────────────────────────────────────────────────────
+  # Proxies HLS manifests from origin and can freeze them to simulate stale
+  # playlists without affecting segment delivery or the MoQ path.
+  manifest-proxy:
+    build:
+      context: ./manifest-proxy
+    container_name: moqompare-manifest-proxy
+    restart: unless-stopped
+    networks:
+      - moqompare
+    environment:
+      - ORIGIN_URL=http://origin
+      - MANIFEST_PROXY_PORT=8091
+    depends_on:
+      origin:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://127.0.0.1:8091/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 6
+      start_period: 5s
+
+  # ── 7. Browser UI ─────────────────────────────────────────────────────────
   # Built image bundles hls.js; nginx proxies /hls/ to origin.
   web:
     build:
@@ -204,10 +231,16 @@ services:
     ports:
       - "${WEB_PORT:-3000}:80"
     depends_on:
-      - origin
-      - relay
-      - impairment
-      - metrics
+      origin:
+        condition: service_healthy
+      relay:
+        condition: service_healthy
+      manifest-proxy:
+        condition: service_healthy
+      impairment:
+        condition: service_healthy
+      metrics:
+        condition: service_healthy
     healthcheck:
       test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://127.0.0.1/health"]
       interval: 10s
@@ -215,7 +248,7 @@ services:
       retries: 3
       start_period: 10s
 
-  # ── 7. Impairment controller ──────────────────────────────────────────────
+  # ── 8. Impairment controller ──────────────────────────────────────────────
   # Privileged container with pid:host so it can nsenter into origin/relay
   # network namespaces and apply tc netem rules without modifying those images.
   impairment:
@@ -232,10 +265,15 @@ services:
     environment:
       - ORIGIN_CONTAINER=${ORIGIN_CONTAINER:-moqompare-origin}
       - RELAY_CONTAINER=${RELAY_CONTAINER:-moqompare-relay}
+      - MANIFEST_PROXY_URL=${MANIFEST_PROXY_URL:-http://manifest-proxy:8091}
       - IMPAIR_PORT=8090
     depends_on:
-      - origin
-      - relay
+      origin:
+        condition: service_healthy
+      relay:
+        condition: service_healthy
+      manifest-proxy:
+        condition: service_healthy
     healthcheck:
       test: ["CMD-SHELL", "wget -q -O- http://127.0.0.1:8090/status | grep -q profile"]
       interval: 5s
@@ -243,7 +281,7 @@ services:
       retries: 6
       start_period: 5s
 
-  # ── 9. Fan-out subscriber simulator (Phase 6) ────────────────────────────
+  # ── 10. Fan-out subscriber simulator (Phase 6) ───────────────────────────
   # Spawns FANOUT_N concurrent moq-relay cluster nodes, each connecting to the
   # main relay as a cluster peer (simulating N concurrent subscribers).
   # Inactive by default — start with:  docker compose --profile fanout up -d fanout
@@ -268,7 +306,7 @@ services:
     depends_on:
       - relay
 
-  # ── 8. Metrics collector ──────────────────────────────────────────────────
+  # ── 9. Metrics collector ──────────────────────────────────────────────────
   # Receives JSON metric reports from the browser (POST /report).
   # Exposes Prometheus metrics at GET /metrics and JSON snapshot at /snapshot.
   metrics:

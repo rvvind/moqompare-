@@ -566,9 +566,51 @@
     let hlsLatency = null;
     let hlsBitrate = null;
     let hlsResW = null, hlsResH = null;
+    const HLS_STARTUP_BUFFER_SEC = 1.5;
+    let hlsPlayRequested = false;
+    let hlsStartupProbe = null;
     // Fast-recovering bandwidth EWMA (alpha=0.6) fed by per-segment measurements.
     // Bypasses hls.js's Math.min(fast,slow) which is slow to recover after squeeze.
     let _bwEwma = 0;
+
+    function _hlsBufferedAhead() {
+      if (!video.buffered || video.buffered.length === 0) return 0;
+      const currentTime = video.currentTime;
+      for (let i = 0; i < video.buffered.length; i++) {
+        const start = video.buffered.start(i);
+        const end = video.buffered.end(i);
+        if (currentTime >= start && currentTime <= end) {
+          return Math.max(0, end - currentTime);
+        }
+        if (currentTime < start) {
+          return Math.max(0, end - start);
+        }
+      }
+      return 0;
+    }
+
+    function _clearHlsStartupProbe() {
+      if (hlsStartupProbe !== null) {
+        clearInterval(hlsStartupProbe);
+        hlsStartupProbe = null;
+      }
+    }
+
+    function _maybeStartHlsPlayback(force) {
+      if (hlsPlayRequested) return;
+      const bufferedAhead = _hlsBufferedAhead();
+      if (!force && bufferedAhead < HLS_STARTUP_BUFFER_SEC && video.readyState < 3) {
+        return;
+      }
+      hlsPlayRequested = true;
+      _clearHlsStartupProbe();
+      startTs = performance.now();
+      video.play().catch(function (e) {
+        hlsPlayRequested = false;
+        addEvent('autoplay blocked: ' + e.message, 'warn');
+        setStatus('Click video to start playback');
+      });
+    }
 
     if (!Hls.isSupported()) {
       // Fallback: Safari native HLS
@@ -602,15 +644,20 @@
         addEvent('manifest parsed — ' + data.levels.length + ' rendition(s)', 'good');
         setText('hls-level', '— / ' + data.levels.length);
         setStatus('Buffering…');
-        startTs = performance.now();
-        video.play().catch(function (e) {
-          addEvent('autoplay blocked: ' + e.message, 'warn');
-          setStatus('Click video to start playback');
-        });
+        _clearHlsStartupProbe();
+        hlsStartupProbe = setInterval(function () {
+          _maybeStartHlsPlayback(false);
+        }, 100);
+        _maybeStartHlsPlayback(false);
+      });
+
+      video.addEventListener('canplay', function () {
+        _maybeStartHlsPlayback(true);
       });
 
       // ── First frame ────────────────────────────────────────────────────
       video.addEventListener('playing', function () {
+        _clearHlsStartupProbe();
         overlay.classList.add('hidden');
         errEl.style.display = 'none';
 
@@ -639,7 +686,8 @@
       // ── Stall / waiting ────────────────────────────────────────────────
       video.addEventListener('waiting', function () {
         overlay.classList.remove('hidden');
-        setStatus('Rebuffering…');
+        setStatus(startupRecorded ? 'Rebuffering…' : 'Buffering…');
+        if (!startupRecorded || stallStartTs !== null) return;
         stallCount++;
         stallStartTs = performance.now();
         setText('hls-stalls', stallCount);
@@ -740,10 +788,7 @@
               setTimeout(function () { window.location.reload(); }, 3000);
           }
         } else {
-          // non-fatal: count stalls on media errors
           if (data.type === Hls.ErrorTypes.MEDIA_ERROR) {
-            stallCount++;
-            setText('hls-stalls', stallCount);
             addEvent('HLS media error: ' + data.details, 'warn');
           }
         }
@@ -822,14 +867,13 @@
     const MOQ_STALL_WINDOW_MS   = 20000;
 
     // ── State ─────────────────────────────────────────────────────────────
-    // Start at lo-rendition: smaller segments → faster first decode.
-    // The startup-upgrade path switches to hi after initial play is confirmed.
-    let moqCurrentName      = MOQ_LO;
+    // Start at hi-rendition to avoid an immediate reconnect/replacement
+    // right after first frame. This keeps initial playback stable.
+    let moqCurrentName      = MOQ_HI;
     let moqAbrDownCount     = 0;
     let moqAbrUpCount       = 0;
     let moqAbrSwitching     = false;
     let moqAbrCooldownUntil = 0;
-    let moqStartupUpgrade   = true;   // pending lo→hi upgrade after initial play
     let moqRecentStallTs    = [];     // timestamps of recent stalls (jitter guard)
 
     let watchEl      = document.getElementById('moq-watch');
@@ -954,26 +998,6 @@
       if (performance.now() < moqAbrCooldownUntil) return;
 
       const bw  = window._hlsBandwidthEst || 0;
-      const now = performance.now();
-
-      // Startup upgrade: lo → hi with minimal hold (1 BW tick) so MoQ
-      // reaches full quality within seconds of first play, without waiting
-      // for the 3-tick hold used for steady-state switches.
-      // If HLS hasn't produced a BW signal yet (bw=0), fall back to a
-      // 4-second timer — the local Docker bridge is always fast enough.
-      if (moqStartupUpgrade && moqCurrentName === MOQ_LO) {
-        if (bw > ABR_UP_BPS) {
-          moqStartupUpgrade = false;
-          _abrSwitch(MOQ_HI);
-          return;
-        }
-        if (bw <= 0 && moqStartupDone && (now - moqStartTs) > 4000) {
-          moqStartupUpgrade = false;
-          _abrSwitch(MOQ_HI);
-          return;
-        }
-        return;  // still waiting on startup upgrade — skip normal ABR
-      }
 
       if (bw <= 0) return;
 
@@ -996,7 +1020,7 @@
     }, 1000);
 
     _connectMoq();
-    addEvent('MoQ connecting to ' + MOQ_URL + ' / ' + MOQ_LO + ' (startup — will upgrade to hi)');
+    addEvent('MoQ connecting to ' + MOQ_URL + ' / ' + MOQ_HI);
 
     // ── Poll broadcast status and canvas metrics ──────────────────────────
     setInterval(function () {

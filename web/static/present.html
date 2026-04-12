@@ -1,0 +1,346 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>moqompare — Presentation Mode</title>
+  <link rel="stylesheet" href="/presentation/shared.css" />
+</head>
+<body class="presentation-page">
+  <div class="present-shell">
+    <header class="present-header">
+      <div class="present-brand">
+        <h1>moqompare — <span class="hls">HLS</span> vs <span class="moq">MoQ</span></h1>
+        <span class="present-badge">Presentation Workspace</span>
+      </div>
+      <span class="present-link">Single-Screen Live Demo</span>
+    </header>
+
+    <button
+      class="present-toggle"
+      id="present-toggle"
+      type="button"
+      aria-label="Open presenter controls"
+      aria-expanded="false"
+      aria-controls="present-rail"
+    >
+      <span class="present-toggle-icon" aria-hidden="true">
+        <span></span>
+        <span></span>
+        <span></span>
+      </span>
+      <span class="present-toggle-label">Controls</span>
+    </button>
+
+    <div class="present-backdrop" id="present-backdrop" hidden></div>
+
+    <main class="present-main workspace-layout">
+      <div class="stage-column">
+        <section class="story-bar">
+          <div class="story-copy">
+            <h2 id="story-headline">One live source, two delivery paths.</h2>
+            <p id="story-subhead">
+              The same live video enters both systems so the audience can focus on delivery behavior, not content differences.
+            </p>
+          </div>
+          <div class="story-meta">
+            <span class="present-badge" id="scene-position">1 / 8</span>
+            <div class="impairment-pill tone-good" id="impairment-pill">baseline</div>
+          </div>
+        </section>
+
+        <section class="shared-telemetry">
+          <article class="telemetry-card emphasis">
+            <div class="label">Time to First Frame</div>
+            <div class="value tone-muted" id="shared-startup">measuring…</div>
+            <div class="meta">How long each path takes before the audience sees motion.</div>
+          </article>
+          <article class="telemetry-card">
+            <div class="label">Drift</div>
+            <div class="value tone-muted" id="shared-drift">measuring…</div>
+            <div class="meta" id="shared-drift-meta">Comparing how far apart the experiences appear on screen.</div>
+          </article>
+          <article class="telemetry-card">
+            <div class="label">Current Condition</div>
+            <div class="value tone-muted" id="shared-condition">Baseline</div>
+            <div class="meta" id="shared-condition-meta">The source remains healthy while delivery conditions change.</div>
+          </article>
+        </section>
+
+        <section class="stage-card">
+          <aside class="stage-story" id="stage-callout">
+            <div class="stage-story-head">
+              <div class="eyebrow tone-good" id="callout-eyebrow">Current Story</div>
+              <span class="stage-story-kicker">Live architecture map</span>
+            </div>
+            <div class="stage-story-copy">
+              <h3 id="callout-title">Shared source</h3>
+              <p id="callout-body">Both experiences begin with the same live video, packaged once and delivered through two protocols.</p>
+            </div>
+          </aside>
+
+          <div class="stage-map" aria-label="Live delivery architecture comparison">
+            <div class="stage-region shared-region" aria-hidden="true"></div>
+            <div class="stage-region hls-region" aria-hidden="true"></div>
+            <div class="stage-region moq-region" aria-hidden="true"></div>
+
+            <svg class="stage-flow" viewBox="0 0 1000 780" preserveAspectRatio="none" aria-hidden="true">
+              <defs>
+                <marker id="stage-arrow" markerWidth="7" markerHeight="7" refX="6" refY="3.5" orient="auto">
+                  <path d="M0 0 L7 3.5 L0 7 z" fill="context-stroke"></path>
+                </marker>
+              </defs>
+              <path class="stage-edge edge-neutral edge-forward" data-edge="source-packager" d=""></path>
+              <path class="stage-edge edge-hls edge-forward" data-edge="hls-origin" d=""></path>
+              <path class="stage-edge edge-hls edge-forward" data-edge="hls-manifest" d=""></path>
+              <path class="stage-edge edge-hls edge-forward" data-edge="hls-delivery" d=""></path>
+              <path class="stage-edge edge-neutral edge-poll" data-edge="hls-poll" d=""></path>
+              <path class="stage-edge edge-moq edge-forward" data-edge="moq-publish" d=""></path>
+              <path class="stage-edge edge-moq edge-forward" data-edge="moq-relay" d=""></path>
+              <path class="stage-edge edge-moq edge-forward" data-edge="moq-delivery" d=""></path>
+            </svg>
+
+            <section class="stage-cluster shared-cluster" aria-label="Shared upstream">
+              <div class="stage-cluster-heading shared">Shared upstream</div>
+              <article class="stage-node source" data-node="source">
+                <div class="eyebrow">Single feed</div>
+                <div class="name">Source</div>
+                <div class="detail">One live feed enters both systems so the comparison stays about delivery behavior.</div>
+              </article>
+              <article class="stage-node packager" data-node="packager">
+                <div class="eyebrow">Common preparation</div>
+                <div class="name">Packager</div>
+                <div class="detail">Builds the HLS fragments once, then hands them to both delivery paths.</div>
+              </article>
+            </section>
+
+            <section class="stage-cluster hls-cluster" aria-label="HLS delivery path">
+              <div class="stage-cluster-heading hls">HLS manifest + segment delivery</div>
+              <article class="stage-node origin protocol-hls" data-node="origin">
+                <div class="eyebrow">Forward media</div>
+                <div class="name">Origin</div>
+                <div class="detail">Serves playlists and segments over HTTP to the HLS experience.</div>
+              </article>
+              <article class="stage-node manifest-proxy protocol-hls" data-node="manifest-proxy">
+                <div class="eyebrow">Control point</div>
+                <div class="name">Manifest Proxy</div>
+                <div class="detail">Decides whether HLS gets fresh instructions or keeps asking the same stale question.</div>
+              </article>
+              <article class="stage-node viewer-hls protocol-hls" data-node="viewer-hls">
+                <div class="eyebrow">Audience view</div>
+                <div class="name">HLS Viewer</div>
+                <div class="detail">Polls for updates, then requests the next segment when the manifest advances.</div>
+              </article>
+            </section>
+
+            <section class="stage-cluster moq-cluster" aria-label="MoQ delivery path">
+              <div class="stage-cluster-heading moq">MoQ object delivery</div>
+              <article class="stage-node publisher protocol-moq" data-node="publisher">
+                <div class="eyebrow">Forward media</div>
+                <div class="name">Publisher</div>
+                <div class="detail">Turns the same live fragments into MoQ objects as soon as they are available.</div>
+              </article>
+              <article class="stage-node relay protocol-moq" data-node="relay">
+                <div class="eyebrow">Live transport</div>
+                <div class="name">Relay</div>
+                <div class="detail">Keeps the newest media moving forward instead of waiting on manifest polling.</div>
+              </article>
+              <article class="stage-node viewer-moq protocol-moq" data-node="viewer-moq">
+                <div class="eyebrow">Audience view</div>
+                <div class="name">MoQ Viewer</div>
+                <div class="detail">Receives the freshest objects through the relay and stays closer to live.</div>
+              </article>
+            </section>
+          </div>
+        </section>
+
+        <section class="video-comparison" id="video-comparison">
+          <div class="video-comparison-head">
+            <button
+              class="rail-icon-btn video-size-toggle"
+              id="video-size-toggle"
+              type="button"
+              aria-pressed="false"
+              aria-controls="video-comparison"
+              title="Reduce player size"
+            >
+              <span class="rail-btn-icon" aria-hidden="true">-</span>
+              <span class="rail-btn-label" id="video-size-toggle-label">Compact Players</span>
+            </button>
+          </div>
+          <article class="video-panel" data-protocol="hls">
+            <div class="video-panel-header">
+              <div class="video-panel-title">
+                <span class="protocol hls">HLS</span>
+                <span class="summary" id="hls-summary">Polling manifests and fetching the next segment.</span>
+              </div>
+            </div>
+            <div class="video-surface">
+              <video id="hls-video" muted playsinline></video>
+              <div class="video-overlay" id="hls-overlay">
+                <div class="spinner tone-hls" style="color: var(--accent-hls)"></div>
+                <div class="status" id="hls-status">Connecting to HLS stream…</div>
+              </div>
+            </div>
+            <div class="video-metrics">
+              <article class="metric-tile" data-protocol="hls" data-metric="liveLatency">
+                <div class="label">Latency to Play Head</div>
+                <div class="value tone-muted" id="hls-liveLatency">measuring…</div>
+                <div class="meta">Distance from the live edge</div>
+              </article>
+              <article class="metric-tile" data-protocol="hls" data-metric="stallCount">
+                <div class="label">Stall Count</div>
+                <div class="value tone-muted" id="hls-stallCount">0</div>
+                <div class="meta">Visible interruptions</div>
+              </article>
+              <article class="metric-tile" data-protocol="hls" data-metric="bitrate">
+                <div class="label">Average Bit-rate</div>
+                <div class="value tone-muted" id="hls-bitrate">measuring…</div>
+                <div class="meta" id="hls-bitrate-meta">Rolling average during live playback</div>
+              </article>
+            </div>
+          </article>
+
+          <article class="video-panel" data-protocol="moq">
+            <div class="video-panel-header">
+              <div class="video-panel-title">
+                <span class="protocol moq">MoQ</span>
+                <span class="summary" id="moq-summary">Publishing fresh media objects through the relay.</span>
+              </div>
+            </div>
+            <div class="video-surface">
+              <hang-watch id="moq-watch" muted latency="2000">
+                <canvas></canvas>
+              </hang-watch>
+              <div class="video-overlay" id="moq-overlay">
+                <div class="spinner" style="color: var(--accent-moq)"></div>
+                <div class="status" id="moq-status">Connecting to MoQ relay…</div>
+              </div>
+            </div>
+            <div class="video-metrics">
+              <article class="metric-tile" data-protocol="moq" data-metric="liveLatency">
+                <div class="label">Latency to Play Head</div>
+                <div class="value tone-muted" id="moq-liveLatency">measuring…</div>
+                <div class="meta">Distance from the live edge</div>
+              </article>
+              <article class="metric-tile" data-protocol="moq" data-metric="stallCount">
+                <div class="label">Stall Count</div>
+                <div class="value tone-muted" id="moq-stallCount">0</div>
+                <div class="meta">Visible interruptions</div>
+              </article>
+              <article class="metric-tile" data-protocol="moq" data-metric="bitrate">
+                <div class="label">Average Bit-rate</div>
+                <div class="value tone-muted" id="moq-bitrate">measuring…</div>
+                <div class="meta" id="moq-bitrate-meta">Rolling average during live playback</div>
+              </article>
+            </div>
+          </article>
+        </section>
+      </div>
+
+      <aside class="present-rail" id="present-rail" aria-label="Presenter controls" aria-hidden="true">
+        <div class="present-rail-head">
+          <div class="present-rail-title">
+            <span class="label">Presenter Controls</span>
+            <span class="meta">Impairments, delivery context, and scene flow</span>
+          </div>
+          <div class="present-rail-head-actions">
+            <button class="rail-icon-btn pin-toggle-btn" id="present-pin" type="button" aria-pressed="false" title="Pin controls as sidebar">
+              <span class="rail-btn-icon" aria-hidden="true">+</span>
+              <span class="rail-btn-label" id="present-pin-label">Pin Sidebar</span>
+            </button>
+            <button class="rail-icon-btn close-rail-btn" id="present-close" type="button" aria-label="Close presenter controls" title="Close controls">
+              <span aria-hidden="true">Close</span>
+            </button>
+          </div>
+        </div>
+        <article class="control-panel">
+          <div class="panel-heading">
+            <h2>Impairments</h2>
+          </div>
+          <div class="panel-body">
+            <div class="impairment-actions rail-actions">
+              <button class="btn" data-impairment="baseline">Baseline</button>
+              <button class="btn warn" data-impairment="jitter">Jitter + Loss</button>
+              <button class="btn warn" data-impairment="squeeze">Bandwidth Squeeze</button>
+              <button class="btn bad" data-impairment="outage">Burst Outage</button>
+              <button class="btn bad" data-impairment="stale_manifest">Stale Manifest</button>
+            </div>
+            <div class="control-actions rail-actions" style="margin-top: 12px;">
+              <button class="btn primary" id="apply-recommended">Apply Recommended</button>
+            </div>
+          </div>
+        </article>
+
+        <article class="context-panel">
+          <div class="panel-heading">
+            <div class="panel-heading-main">
+              <h2>Context</h2>
+              <span class="tone-muted">What each impairment changes in delivery behavior</span>
+            </div>
+          </div>
+          <div class="panel-body">
+            <div class="context-list" id="context-panel"></div>
+          </div>
+        </article>
+
+        <article class="telemetry-panel">
+          <div class="panel-heading">
+            <h2>Audience Telemetry</h2>
+            <span class="tone-muted" id="audience-status">warming up…</span>
+          </div>
+          <div class="panel-body detail-grid" id="audience-telemetry"></div>
+        </article>
+
+        <article class="health-panel">
+          <div class="panel-heading">
+            <h2>Readiness</h2>
+          </div>
+          <div class="panel-body detail-grid" id="health-panel"></div>
+        </article>
+
+        <details class="scene-controls-panel collapsible-panel">
+          <summary class="panel-heading">
+            <div class="panel-heading-main">
+              <h2>Scene Controls</h2>
+              <span class="tone-muted" id="scene-position">1 / 8</span>
+            </div>
+            <span class="collapse-indicator" id="scene-controls-indicator">Show</span>
+          </summary>
+          <div class="panel-body">
+            <div class="scene-preview-card">
+              <div class="scene-preview-copy">
+                <div class="scene-preview-topline">
+                  <span class="scene-preview-label">Current Scene</span>
+                  <span class="impairment-pill tone-good" id="console-impairment">baseline</span>
+                </div>
+                <strong id="console-headline">One live source, two delivery paths.</strong>
+                <div id="console-subhead" style="margin-top: 8px;">
+                  The same live video enters both systems so the audience can focus on delivery behavior, not content differences.
+                </div>
+              </div>
+              <div class="control-actions rail-actions" style="margin-top: 14px;">
+                <button class="btn" id="prev-scene">Previous Scene</button>
+                <button class="btn primary" id="next-scene">Next Scene</button>
+                <button class="btn" id="reset-baseline">Reset Baseline</button>
+              </div>
+            </div>
+
+            <div class="scene-list-block">
+              <div class="subpanel-heading">
+                <h3>Scenes</h3>
+                <span class="tone-muted" id="scene-current-title">One Live Source</span>
+              </div>
+              <div class="scene-items" id="scene-items"></div>
+            </div>
+          </div>
+        </details>
+      </aside>
+    </main>
+  </div>
+
+  <script src="/hls.min.js"></script>
+  <script type="module" src="/hang.js"></script>
+  <script type="module" src="/presentation/audience.js"></script>
+</body>
+</html>

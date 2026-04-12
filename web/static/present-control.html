@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>moqompare — Presenter Console</title>
+  <link rel="stylesheet" href="/presentation/shared.css" />
+</head>
+<body class="presentation-page">
+  <div class="present-shell">
+    <header class="present-header">
+      <div class="present-brand">
+        <h1>moqompare — <span class="hls">HLS</span> vs <span class="moq">MoQ</span></h1>
+        <span class="present-badge">Presenter Console</span>
+      </div>
+      <a class="present-link" href="/present" target="_blank" rel="noreferrer">Open Audience View</a>
+    </header>
+
+    <main class="present-main control-layout">
+      <section class="control-stack">
+        <article class="control-panel">
+          <div class="panel-heading">
+            <h2>Impairments</h2>
+          </div>
+          <div class="panel-body">
+            <div class="impairment-actions">
+              <button class="btn" data-impairment="baseline">Baseline</button>
+              <button class="btn warn" data-impairment="jitter">Jitter + Loss</button>
+              <button class="btn warn" data-impairment="squeeze">Bandwidth Squeeze</button>
+              <button class="btn bad" data-impairment="outage">Burst Outage</button>
+              <button class="btn bad" data-impairment="stale_manifest">Stale Manifest</button>
+            </div>
+            <div class="control-actions" style="margin-top: 12px;">
+              <button class="btn primary" id="apply-recommended">Apply Scene Impairment</button>
+            </div>
+          </div>
+        </article>
+
+        <article class="context-panel">
+          <div class="panel-heading">
+            <div class="panel-heading-main">
+              <h2>Context</h2>
+              <span class="tone-muted">What each impairment changes in delivery behavior</span>
+            </div>
+          </div>
+          <div class="panel-body">
+            <div class="context-list" id="context-panel"></div>
+          </div>
+        </article>
+
+        <article class="telemetry-panel">
+          <div class="panel-heading">
+            <h2>Audience Telemetry</h2>
+            <span class="tone-muted" id="audience-status">waiting for audience…</span>
+          </div>
+          <div class="panel-body detail-grid" id="audience-telemetry"></div>
+        </article>
+
+        <article class="health-panel">
+          <div class="panel-heading">
+            <h2>Readiness</h2>
+          </div>
+          <div class="panel-body detail-grid" id="health-panel"></div>
+        </article>
+
+        <details class="scene-controls-panel collapsible-panel">
+          <summary class="panel-heading">
+            <div class="panel-heading-main">
+              <h2>Scene Controls</h2>
+              <span class="tone-muted" id="scene-position">1 / 8</span>
+            </div>
+            <span class="collapse-indicator" id="scene-controls-indicator">Show</span>
+          </summary>
+          <div class="panel-body">
+            <div class="scene-preview-card">
+              <div class="scene-preview-copy">
+                <div class="scene-preview-topline">
+                  <span class="scene-preview-label">Current Scene</span>
+                  <span class="impairment-pill tone-good" id="console-impairment">baseline</span>
+                </div>
+                <strong id="console-headline">One live source, two delivery paths.</strong>
+                <div id="console-subhead" style="margin-top: 8px;">
+                  The same live video enters both systems so the audience can focus on delivery behavior, not content differences.
+                </div>
+              </div>
+              <div class="control-actions" style="margin-top: 14px;">
+                <button class="btn" id="prev-scene">Previous Scene</button>
+                <button class="btn primary" id="next-scene">Next Scene</button>
+                <button class="btn" id="reset-baseline">Reset Baseline</button>
+              </div>
+            </div>
+
+            <div class="scene-list-block">
+              <div class="subpanel-heading">
+                <h3>Scenes</h3>
+                <span class="tone-muted" id="scene-current-title">One Live Source</span>
+              </div>
+              <div class="scene-items" id="scene-items"></div>
+            </div>
+          </div>
+        </details>
+      </section>
+    </main>
+  </div>
+
+  <script type="module" src="/presentation/control.js"></script>
+</body>
+</html>
