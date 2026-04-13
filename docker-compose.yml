@@ -18,6 +18,7 @@ services:
   # Writes MPEG-TS into /media/source.pipe (named pipe).
   # Healthcheck: FIFO exists → packager can connect.
   source:
+    image: ghcr.io/rvvind/moqompare-source:latest
     build:
       context: ./source
     container_name: moqompare-source
@@ -45,6 +46,7 @@ services:
   # Muxes into fMP4 HLS segments at /media/hls/.
   # Healthcheck: stream.m3u8 exists (first segment written).
   packager:
+    image: ghcr.io/rvvind/moqompare-packager:latest
     build:
       context: ./packager
     container_name: moqompare-packager
@@ -104,6 +106,7 @@ services:
   # "stream_hi".  The JS ABR controller subscribes to this by default and
   # falls back to stream_lo when measured bandwidth drops below threshold.
   publisher-hi:
+    image: ghcr.io/rvvind/moqompare-publisher:latest
     build:
       context: ./publisher
     container_name: moqompare-publisher-hi
@@ -135,6 +138,7 @@ services:
   # "stream_lo".  The JS ABR controller switches to this broadcast when
   # bandwidth falls below the hi-rendition threshold.
   publisher-lo:
+    image: ghcr.io/rvvind/moqompare-publisher:latest
     build:
       context: ./publisher
     container_name: moqompare-publisher-lo
@@ -167,6 +171,7 @@ services:
   # Serves QUIC/WebTransport on UDP 4443 and plain HTTP on TCP 4443
   # (used by clients to fetch the TLS certificate fingerprint).
   relay:
+    image: ghcr.io/rvvind/moqompare-relay:latest
     build:
       context: ./relay
     container_name: moqompare-relay
@@ -198,6 +203,7 @@ services:
   # Proxies HLS manifests from origin and can freeze them to simulate stale
   # playlists without affecting segment delivery or the MoQ path.
   manifest-proxy:
+    image: ghcr.io/rvvind/moqompare-manifest-proxy:latest
     build:
       context: ./manifest-proxy
     container_name: moqompare-manifest-proxy
@@ -220,6 +226,7 @@ services:
   # ── 7. Browser UI ─────────────────────────────────────────────────────────
   # Built image bundles hls.js; nginx proxies /hls/ to origin.
   web:
+    image: ghcr.io/rvvind/moqompare-web:latest
     build:
       context: ./web
     container_name: moqompare-web
@@ -252,6 +259,7 @@ services:
   # Privileged container with pid:host so it can nsenter into origin/relay
   # network namespaces and apply tc netem rules without modifying those images.
   impairment:
+    image: ghcr.io/rvvind/moqompare-impairment:latest
     build:
       context: ./impairment
     container_name: moqompare-impairment
@@ -286,6 +294,7 @@ services:
   # main relay as a cluster peer (simulating N concurrent subscribers).
   # Inactive by default — start with:  docker compose --profile fanout up -d fanout
   fanout:
+    image: ghcr.io/rvvind/moqompare-publisher:latest
     build:
       context: ./fanout
     container_name: moqompare-fanout
@@ -310,6 +319,7 @@ services:
   # Receives JSON metric reports from the browser (POST /report).
   # Exposes Prometheus metrics at GET /metrics and JSON snapshot at /snapshot.
   metrics:
+    image: ghcr.io/rvvind/moqompare-metrics:latest
     build:
       context: ./metrics
     container_name: moqompare-metrics

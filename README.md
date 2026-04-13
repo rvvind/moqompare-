@@ -156,7 +156,7 @@ open http://localhost:3000/present
 open http://localhost:3000/fanout
 ```
 
-**First run note:** `relay` and `publisher` compile moq-rs from source in Rust (~5–10 min). Subsequent starts use the Docker layer cache and take seconds.
+**First run note:** `make setup` pulls pre-built multi-platform images from GHCR — no Rust compilation required. All services start in seconds.
 
 **Expected startup order:**
 1. `source` → creates FIFO, begins encoding (~10 s to healthy)
@@ -283,7 +283,7 @@ The impairment container needs access to the Docker socket. Verify `DOCKER_HOST`
 Ensure the source container image is current (`docker-compose build source`). Older images used `-stream_loop -1` with the concat demuxer, which causes a multi-second FIFO stall at each loop boundary. The current image pre-expands the playlist to 4995 entries so FFmpeg runs for hours without restarting.
 
 **First `make up` takes too long**  
-Normal on first run — Rust compiles moq-relay and moq-cli from source. Subsequent starts use the build cache and take seconds.
+Run `make setup` first — it pulls pre-built images from GHCR so no compilation is needed. If you intentionally ran `make build-images`, the Rust compile for `relay` and `publisher` is expected to take a few minutes on first build.
 
 ---
 

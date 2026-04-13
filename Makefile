@@ -2,7 +2,7 @@
 #  moqompare — task runner
 # ─────────────────────────────────────────────
 
-.PHONY: setup up down logs clean ps shell-source shell-packager shell-web cluster-credentials help
+.PHONY: setup up down logs clean ps shell-source shell-packager shell-web cluster-credentials build-images help
 
 COMPOSE := $(shell if docker compose version >/dev/null 2>&1; then printf '%s' 'docker compose'; elif command -v docker-compose >/dev/null 2>&1; then printf '%s' 'docker-compose'; else printf '%s' 'docker compose'; fi)
 ENV_FILE := .env
@@ -23,6 +23,10 @@ setup:
 ## Generate cluster_auth.jwk + cluster_token for fan-out subscriber auth
 cluster-credentials:
 	@python3 scripts/generate_cluster_credentials.py
+
+## Build all images locally from source (maintainers only — users should pull)
+build-images:
+	$(COMPOSE) build
 
 # ── Lifecycle ─────────────────────────────────────────────────────────────────
 
