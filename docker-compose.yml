@@ -248,6 +248,8 @@ services:
         condition: service_healthy
       metrics:
         condition: service_healthy
+      ad:
+        condition: service_healthy
     healthcheck:
       test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://127.0.0.1/health"]
       interval: 10s
@@ -314,6 +316,43 @@ services:
       - FANOUT_CLUSTER_TOKEN=/cluster_token
     depends_on:
       - relay
+
+  # ── 11. Ad server ─────────────────────────────────────────────────────────
+  # Watches /media/ads/creative/ for dropped .mp4 files; pre-processes each
+  # to fMP4 HLS on arrival. Serves VAST 3.0 XML, ad HLS files, and tracking
+  # beacons. Polls the live HLS manifest for EXT-X-CUE-OUT markers and
+  # orchestrates the stream_ad MoQ publisher accordingly.
+  ad:
+    build:
+      context: ./ad
+    container_name: moqompare-ad
+    restart: unless-stopped
+    volumes:
+      - media:/media
+      - ${AD_CREATIVE_DIR:-./ads/creative}:/media/ads/creative
+    networks:
+      - moqompare
+    environment:
+      - RELAY_URL=http://relay:4443
+      - MANIFEST_PROXY_URL=http://manifest-proxy:8091
+      - CONTENT_RESOLUTION=${SOURCE_RESOLUTION:-1280x720}
+      - CONTENT_BITRATE=${SOURCE_BITRATE:-4000k}
+      - SEGMENT_DURATION=${HLS_SEGMENT_DURATION:-2}
+      - SOURCE_FPS=${SOURCE_FPS:-30}
+      - AD_CUE_LEAD_SECS=${AD_CUE_LEAD_SECS:-10}
+      - AD_PORT=8092
+      - LOG_LEVEL=${LOG_LEVEL:-info}
+    depends_on:
+      relay:
+        condition: service_healthy
+      manifest-proxy:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O- http://127.0.0.1:8092/health | grep -q ok"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
 
   # ── 9. Metrics collector ──────────────────────────────────────────────────
   # Receives JSON metric reports from the browser (POST /report).

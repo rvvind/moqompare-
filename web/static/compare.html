@@ -89,7 +89,53 @@
     }
     .impair-btn:hover { background: #333649; }
     .impair-btn.active { border-color: var(--warn); color: var(--warn); }
-    #current-profile { margin-left: auto; color: var(--good); font-size: 12px; }
+    #current-profile { color: var(--good); font-size: 12px; }
+    .ad-divider { width: 1px; height: 20px; background: var(--border); margin: 0 4px; }
+    .ad-controls {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-left: auto;
+    }
+    .ad-duration-label {
+      color: var(--text-muted);
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+    }
+    .ad-duration-input {
+      width: 64px;
+      background: #161922;
+      color: var(--text);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      padding: 4px 8px;
+      font-family: inherit;
+      font-size: 12px;
+    }
+    .ad-break-btn {
+      background: #92400e;
+      color: #fde68a;
+      border: 1px solid #f59e0b;
+      border-radius: 4px;
+      padding: 4px 14px;
+      cursor: pointer;
+      font-family: inherit;
+      font-size: 12px;
+      font-weight: 600;
+      transition: background 0.15s;
+    }
+    .ad-break-btn:hover { background: #b45309; }
+    .ad-break-btn:disabled { opacity: 0.45; cursor: not-allowed; }
+    .ad-badge {
+      background: #f59e0b;
+      color: #000;
+      font-size: 11px;
+      font-weight: 700;
+      padding: 2px 6px;
+      border-radius: 3px;
+      letter-spacing: 0.05em;
+    }
 
     /* ── Profile note bar ────────────────────────────────────────────────── */
     .profile-note {
@@ -300,6 +346,12 @@
     <button class="impair-btn" data-profile="outage" onclick="setProfile('outage')">Burst Outage</button>
     <button class="impair-btn" data-profile="stale_manifest" onclick="setProfile('stale_manifest')">Stale Manifest</button>
     <span id="current-profile">&#9679; baseline</span>
+    <div class="ad-divider"></div>
+    <div class="ad-controls">
+      <label class="ad-duration-label" for="ad-break-duration">Ad Len</label>
+      <input class="ad-duration-input" id="ad-break-duration" type="number" min="1" max="120" step="1" value="30" />
+      <button class="ad-break-btn" id="ad-break-btn" onclick="insertAdBreak()">&#9654; Insert Ad Break</button>
+    </div>
   </div>
   <div class="profile-note" id="profile-note">Select an impairment profile to see how each protocol responds.</div>
 
@@ -390,10 +442,14 @@
           </div>
         </div>
       </div>
-      <div class="video-area">
+      <div class="video-area" style="position:relative">
         <hang-watch id="moq-watch" muted latency="2000">
           <canvas></canvas>
         </hang-watch>
+        <div id="ad-overlay" style="display:none;position:absolute;top:8px;left:8px;display:none;gap:8px;align-items:center;z-index:10;flex-direction:row;">
+          <span class="ad-badge">AD</span>
+          <span id="ad-countdown" style="font-size:11px;color:#fff;font-weight:600;text-shadow:0 1px 3px rgba(0,0,0,0.8);"></span>
+        </div>
         <div class="video-overlay" id="moq-overlay">
           <div class="spinner" style="border-top-color:var(--accent-moq)"></div>
           <span class="overlay-msg" id="moq-status">Connecting to MoQ relay…</span>
@@ -447,6 +503,13 @@
     function setStatus(msg) {
       setText('hls-status', msg);
     }
+
+    window._setAdBreakControlsEnabled = function (enabled) {
+      const btn = document.getElementById('ad-break-btn');
+      const durationEl = document.getElementById('ad-break-duration');
+      if (btn) btn.disabled = !enabled;
+      if (durationEl) durationEl.disabled = !enabled;
+    };
 
     // ── Impairment UI ──────────────────────────────────────────────────────
     const impairBtns = document.querySelectorAll('.impair-btn');
@@ -548,6 +611,65 @@
         })
         .catch(function (e) {
           addEvent('impairment request failed: ' + e.message, 'bad');
+        });
+    }
+
+    // ── Ad break trigger ──────────────────────────────────────────────────
+    let adBreakRequestSeq = 0;
+
+    function _nextAdBreakTraceId() {
+      adBreakRequestSeq += 1;
+      return 'adreq-' + Date.now() + '-' + adBreakRequestSeq;
+    }
+
+    function insertAdBreak() {
+      const durationEl = document.getElementById('ad-break-duration');
+      let duration = parseInt(durationEl?.value || '30', 10);
+      if (!Number.isFinite(duration)) duration = 30;
+      duration = Math.max(1, Math.min(120, duration));
+      if (durationEl) durationEl.value = String(duration);
+      const traceId = _nextAdBreakTraceId();
+      if (typeof window._debugMoq === 'function') {
+        window._debugMoq('insert ad break click', { duration, traceId });
+      } else {
+        console.log('[moq-debug boot] insert ad break click', { duration, traceId });
+      }
+      window._setAdBreakControlsEnabled(false);
+      Promise.all([
+        fetch(
+          '/ad/trigger?duration=' + encodeURIComponent(duration) +
+          '&trace_id=' + encodeURIComponent(traceId),
+          { method: 'POST' }
+        )
+          .then(r => r.json()),
+        fetch(
+          '/impair/inject_cue?duration=' + encodeURIComponent(duration) +
+          '&trace_id=' + encodeURIComponent(traceId),
+          { method: 'POST' }
+        )
+          .then(r => r.json()),
+      ])
+        .then(function ([adResp, cueResp]) {
+          if (typeof window._debugMoq === 'function') {
+            window._debugMoq('insert ad break response', { traceId, adResp, cueResp });
+          }
+          if (!adResp.ok) {
+            throw new Error('ad trigger failed');
+          }
+          if (!cueResp.ok) {
+            throw new Error('cue inject failed: ' + (cueResp.errors || []).join('; '));
+          }
+          addEvent(
+            'Ad break armed \u2014 switch scheduled ~10s ahead (' + duration + 's requested)',
+            'warn'
+          );
+        })
+        .catch(function (e) {
+          if (typeof window._debugMoq === 'function') {
+            window._debugMoq('insert ad break failed', { traceId, error: e.message });
+          }
+          addEvent('ad break trigger failed: ' + e.message, 'bad');
+          window._setAdBreakControlsEnabled(true);
         });
     }
 
@@ -847,6 +969,7 @@
     const MOQ_URL = 'http://' + window.location.hostname + ':4443';
     const MOQ_HI  = 'stream_hi';
     const MOQ_LO  = 'stream_lo';
+    const MOQ_AD  = 'stream_ad';
 
     // ── ABR thresholds ────────────────────────────────────────────────────
     const ABR_HI_BPS     = 4_000_000;
@@ -865,6 +988,9 @@
     const MOQ_ABR_COOLDOWN_MS   = 5000;
     // Stall timestamps within this window count as "MoQ self-struggling"
     const MOQ_STALL_WINDOW_MS   = 20000;
+    // Prime the hidden ad watch shortly before cue so it can start/connect
+    // without consuming most of the ad before the visible switch.
+    const AD_PRIME_LEAD_S       = 1.5;
 
     // ── State ─────────────────────────────────────────────────────────────
     // Start at hi-rendition to avoid an immediate reconnect/replacement
@@ -876,8 +1002,11 @@
     let moqAbrCooldownUntil = 0;
     let moqRecentStallTs    = [];     // timestamps of recent stalls (jitter guard)
 
-    let watchEl      = document.getElementById('moq-watch');
+    let contentWatchEl = document.getElementById('moq-watch');
+    let adWatchEl      = null;
+    let watchEl        = contentWatchEl;
     const moqOverlay = document.getElementById('moq-overlay');
+    const moqVideoArea = watchEl.parentNode;
 
     let moqStartTs      = performance.now();
     let moqStartupDone  = false;
@@ -892,25 +1021,131 @@
     let moqReconnectAttempt = 0;
     let moqReconnectTimer   = null;
 
+    // ── Ad break state ────────────────────────────────────────────────────
+    let adState        = 'idle';   // idle | armed | playing
+    let adPreTrack     = MOQ_HI;   // track to return to after ad
+    let adCountdownTimer = null;
+    let adWatchPrimed    = false;
+    const MOQ_DEBUG_LOGS = false;
+    function _debugMoq(msg, extra) {
+      if (!MOQ_DEBUG_LOGS) return;
+      const ts = (performance.now() / 1000).toFixed(3) + 's';
+      if (extra === undefined) {
+        console.log('[moq-debug ' + ts + '] ' + msg);
+      } else {
+        console.log('[moq-debug ' + ts + '] ' + msg, extra);
+      }
+    }
+    window._debugMoq = _debugMoq;
+
+    function _watchLabel(el) {
+      if (!el) return 'none';
+      if (el === contentWatchEl) return 'content';
+      if (el === adWatchEl) return 'ad';
+      return el.id || 'unknown';
+    }
+
+    function _getWatchSnapshot(el) {
+      if (!el) return null;
+      const instance = el.active ? el.active.peek() : undefined;
+      const broad = instance?.broadcast?.status ? instance.broadcast.status.peek() : undefined;
+      const canvas = el.querySelector('canvas');
+      return {
+        label: _watchLabel(el),
+        id: el.id || '',
+        name: el.name || '',
+        broad: broad || 'none',
+        hasInstance: Boolean(instance),
+        visible: el.style.visibility !== 'hidden' && el.style.opacity !== '0',
+        canvas: canvas ? (canvas.width + 'x' + canvas.height) : 'none',
+      };
+    }
+
+    function _logWatchSnapshot(context) {
+      const active = _watchLabel(watchEl);
+      _debugMoq(context, {
+        active,
+        content: _getWatchSnapshot(contentWatchEl),
+        ad: _getWatchSnapshot(adWatchEl),
+        currentName: moqCurrentName,
+        adState,
+        adWatchPrimed,
+      });
+    }
+
     function _fmtBps(bps) {
       if (bps >= 1e6) return (bps / 1e6).toFixed(1) + ' Mb/s';
       return Math.round(bps / 1e3) + ' kb/s';
     }
 
+    function _makeWatchEl(id, absolute = false) {
+      const el = document.createElement('hang-watch');
+      el.id = id;
+      el.setAttribute('muted', '');
+      el.setAttribute('latency', watchEl.getAttribute('latency') || '2000');
+      el.innerHTML = '<canvas></canvas>';
+      if (absolute) {
+        el.style.position = 'absolute';
+        el.style.inset = '0';
+        el.style.zIndex = '1';
+        el.style.opacity = '0';
+        el.style.visibility = 'hidden';
+        el.style.pointerEvents = 'none';
+      }
+      return el;
+    }
+
+    function _connectWatch(targetEl, targetName) {
+      targetEl.url  = new URL(MOQ_URL);
+      targetEl.name = targetName;
+      _debugMoq('connect watch ' + _watchLabel(targetEl) + ' -> ' + targetName);
+    }
+
     function _connectMoq() {
-      watchEl.url  = new URL(MOQ_URL);
-      watchEl.name = moqCurrentName;
+      _connectWatch(watchEl, moqCurrentName);
+    }
+
+    function _ensureAdWatchEl() {
+      if (adWatchEl && adWatchEl.isConnected) return adWatchEl;
+      adWatchEl = _makeWatchEl('moq-watch-ad', true);
+      moqVideoArea.insertBefore(adWatchEl, document.getElementById('ad-overlay'));
+      _debugMoq('created hidden ad watch element');
+      return adWatchEl;
+    }
+
+    function _setActiveWatch(targetEl) {
+      if (contentWatchEl) {
+        contentWatchEl.style.opacity = targetEl === contentWatchEl ? '1' : '0';
+        contentWatchEl.style.visibility = targetEl === contentWatchEl ? 'visible' : 'hidden';
+        contentWatchEl.style.pointerEvents = 'none';
+      }
+      if (adWatchEl) {
+        adWatchEl.style.opacity = targetEl === adWatchEl ? '1' : '0';
+        adWatchEl.style.visibility = targetEl === adWatchEl ? 'visible' : 'hidden';
+        adWatchEl.style.pointerEvents = 'none';
+      }
+      watchEl = targetEl;
+      prevBroad = null;
+      _logWatchSnapshot('set active watch -> ' + _watchLabel(targetEl));
+    }
+
+    function _primeAdWatch() {
+      const target = _ensureAdWatchEl();
+      _connectWatch(target, MOQ_AD);
+      adWatchPrimed = true;
+      _logWatchSnapshot('primed ad watch');
     }
 
     function _replaceWatchEl() {
       const parent = watchEl.parentNode;
-      const newEl  = document.createElement('hang-watch');
-      newEl.id = 'moq-watch';
-      newEl.setAttribute('muted', '');
-      newEl.setAttribute('latency', watchEl.getAttribute('latency') || '2000');
-      newEl.innerHTML = '<canvas></canvas>';
+      const newEl  = _makeWatchEl(watchEl.id, watchEl !== contentWatchEl);
       parent.replaceChild(newEl, watchEl);
-      watchEl = newEl;
+      if (watchEl === contentWatchEl) {
+        contentWatchEl = newEl;
+      } else if (watchEl === adWatchEl) {
+        adWatchEl = newEl;
+      }
+      _setActiveWatch(newEl);
     }
 
     // ── Reconnect machinery: soft → hard, exponential backoff ────────────
@@ -987,6 +1222,102 @@
       _connectMoq();
     }
 
+    // ── Ad overlay helpers ────────────────────────────────────────────────
+    const adOverlayEl = document.getElementById('ad-overlay');
+
+    function _showAdOverlay(durationS) {
+      if (!adOverlayEl) return;
+      adOverlayEl.style.display = 'flex';
+      let remaining = Math.ceil(durationS);
+      const countdownEl = document.getElementById('ad-countdown');
+      function _tick() {
+        if (countdownEl) countdownEl.textContent = remaining + 's';
+        if (remaining <= 0) return;
+        remaining--;
+        adCountdownTimer = setTimeout(_tick, 1000);
+      }
+      _tick();
+    }
+
+    function _hideAdOverlay() {
+      if (!adOverlayEl) return;
+      adOverlayEl.style.display = 'none';
+      if (adCountdownTimer) { clearTimeout(adCountdownTimer); adCountdownTimer = null; }
+      const countdownEl = document.getElementById('ad-countdown');
+      if (countdownEl) countdownEl.textContent = '';
+    }
+
+    function _showAdArmCountdown(remainingS) {
+      if (!adOverlayEl) return;
+      adOverlayEl.style.display = 'flex';
+      const countdownEl = document.getElementById('ad-countdown');
+      if (countdownEl) countdownEl.textContent = 'starts in ' + Math.max(0, Math.ceil(remainingS)) + 's';
+    }
+
+    function _armAdBreak(creative, durationS, switchInS, traceId) {
+      addEvent(
+        'Ad break cued — ' + creative + ' track established, switch in ' +
+        Math.max(0, Math.ceil(switchInS || 0)) + 's',
+        'warn'
+      );
+      _debugMoq('ad armed', { creative, durationS, switchInS, traceId });
+      adPreTrack = moqCurrentName === MOQ_AD ? MOQ_HI : moqCurrentName;
+      moqDeadSince        = null;
+      moqAbrDownCount     = 0;
+      moqAbrUpCount       = 0;
+      moqAbrSwitching     = true;
+      moqAbrCooldownUntil = performance.now() + ((switchInS || 0) * 1000) + durationS * 1000 + 3000;
+      _cancelReconnect();
+      adWatchPrimed = false;
+      _showAdArmCountdown(switchInS || 0);
+      setText('moq-status', 'Ad track ready…');
+      window._setAdBreakControlsEnabled(false);
+    }
+
+    // ── Ad break switch ───────────────────────────────────────────────────
+    function _onAdBreakStart(creative, durationS, traceId) {
+      addEvent('Ad break start \u2014 ' + creative + ' (' + durationS + 's)', 'warn');
+      _debugMoq('ad start', { creative, durationS, traceId });
+      adPreTrack = moqCurrentName === MOQ_AD ? MOQ_HI : moqCurrentName;
+      if (!adWatchPrimed) _primeAdWatch();
+      _setActiveWatch(adWatchEl);
+      moqCurrentName = MOQ_AD;
+      moqDeadSince        = null;
+      moqAbrDownCount     = 0;
+      moqAbrUpCount       = 0;
+      moqAbrSwitching     = true;
+      moqAbrCooldownUntil = performance.now() + durationS * 1000 + 3000;
+      _cancelReconnect();
+      moqOverlay.classList.remove('hidden');
+      setText('moq-status', 'Playing ad…');
+      setText('moq-level', 'ad');
+      _showAdOverlay(durationS);
+      window._setAdBreakControlsEnabled(false);
+      _logWatchSnapshot('after ad start switch');
+    }
+
+    function _onAdBreakEnd(traceId) {
+      addEvent('Ad break end \u2014 returning to content', 'good');
+      _debugMoq('ad end', { traceId });
+      _hideAdOverlay();
+      adWatchPrimed = false;
+      _setActiveWatch(contentWatchEl);
+      moqCurrentName      = adPreTrack;
+      moqDeadSince        = null;
+      moqAbrDownCount     = 0;
+      moqAbrUpCount       = 0;
+      moqAbrSwitching     = true;
+      moqAbrCooldownUntil = performance.now() + MOQ_ABR_COOLDOWN_MS;
+      const levelText = adPreTrack === MOQ_HI ? 'hi (1/2)' : 'lo (2/2)';
+      _cancelReconnect();
+      moqOverlay.classList.remove('hidden');
+      setText('moq-status', 'Live content resumed');
+      setText('moq-level', levelText);
+      setText('moq-bitrate', _fmtBps(RENDITION_BPS[adPreTrack]));
+      window._setAdBreakControlsEnabled(true);
+      _logWatchSnapshot('after ad end switch');
+    }
+
     // ── ABR ticker ────────────────────────────────────────────────────────
     // Jitter-aware: MoQ only switches DOWN if QUIC itself is stalling OR
     // bandwidth is severely constrained (< 50% of hi threshold = 2 Mbps).
@@ -995,6 +1326,7 @@
     // handles the same loss without throughput impact.
     setInterval(function () {
       if (!moqStartupDone) return;
+      if (moqCurrentName === MOQ_AD) return;   // no ABR during ad break
       if (performance.now() < moqAbrCooldownUntil) return;
 
       const bw  = window._hlsBandwidthEst || 0;
@@ -1126,6 +1458,82 @@
         });
       }
     }, 5000);
+
+    // ── Ad break status polling ───────────────────────────────────────────
+    // Idle state polls slowly to reduce background traffic. Once an ad is
+    // armed or playing, we ramp to 4x/sec so the cue countdown and switch
+    // timing stay responsive.
+    const AD_STATUS_POLL_IDLE_MS = 1500;
+    const AD_STATUS_POLL_ACTIVE_MS = 250;
+    let adStatusPollTimer = null;
+
+    function _scheduleAdStatusPoll(delayMs) {
+      if (adStatusPollTimer) clearTimeout(adStatusPollTimer);
+      adStatusPollTimer = setTimeout(_pollAdStatus, delayMs);
+    }
+
+    async function _pollAdStatus() {
+      let nextDelayMs = (adState === 'idle')
+        ? AD_STATUS_POLL_IDLE_MS
+        : AD_STATUS_POLL_ACTIVE_MS;
+
+      try {
+        const r = await fetch('/ad/status');
+        if (r.ok) {
+          const s = await r.json();
+          if (s.state === 'armed' && adState === 'idle') {
+            adState = 'armed';
+            _armAdBreak(s.creative || 'ad', s.duration_s || 30, s.switch_in_s || 0, s.trace_id || '');
+            if ((s.switch_in_s || 0) <= AD_PRIME_LEAD_S) _primeAdWatch();
+          } else if (s.state === 'armed' && adState === 'armed') {
+            if (!adWatchPrimed && (s.switch_in_s || 0) <= AD_PRIME_LEAD_S) _primeAdWatch();
+            _showAdArmCountdown(s.switch_in_s || 0);
+          } else if (s.state === 'playing' && adState !== 'playing') {
+            adState = 'playing';
+            _onAdBreakStart(s.creative || 'ad', s.duration_s || 30, s.trace_id || '');
+            // Fire impression log once
+            addEvent('VAST impression fired \u2014 ' + (s.creative || 'ad'), 'good');
+          } else if (s.state === 'idle' && adState === 'armed') {
+            adState = 'idle';
+            adWatchPrimed = false;
+            _hideAdOverlay();
+            setText('moq-status', 'Live content resumed');
+            window._setAdBreakControlsEnabled(true);
+          } else if (s.state === 'idle' && adState === 'playing') {
+            adState = 'idle';
+            _onAdBreakEnd(s.trace_id || '');
+          }
+          nextDelayMs = (s.state === 'idle')
+            ? AD_STATUS_POLL_IDLE_MS
+            : AD_STATUS_POLL_ACTIVE_MS;
+        }
+      } catch (_) { /* ad service not yet up — ignore */ }
+
+      _scheduleAdStatusPoll(nextDelayMs);
+    }
+
+    _scheduleAdStatusPoll(0);
+
+    // ── Creative availability polling ─────────────────────────────────────
+    // Announces in the timeline when a new creative becomes ready.
+    (async function () {
+      const known = new Set();
+      async function _checkCreatives() {
+        try {
+          const r = await fetch('/ad/creatives');
+          if (!r.ok) return;
+          const list = await r.json();
+          for (const c of list) {
+            if (c.ready && !known.has(c.name)) {
+              known.add(c.name);
+              addEvent('Ad creative ready: ' + c.name + ' (' + c.duration_s + 's)', 'good');
+            }
+          }
+        } catch (_) {}
+      }
+      await _checkCreatives();
+      setInterval(_checkCreatives, 5000);
+    })();
   </script>
   <!-- ── Drift measurement ──────────────────────────────────────────────── -->
   <!-- Fingerprints the SRC HH:MM:SS region (x=20,y=20,320×60) from both    -->

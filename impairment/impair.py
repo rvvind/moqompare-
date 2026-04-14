@@ -24,6 +24,8 @@ Endpoints:
   POST /impair/squeeze         — 500 kbit/s rate cap
   POST /impair/outage          — 100 % loss for 5 s, then auto-clear
   POST /impair/stale_manifest  — freeze manifests for 30 s, then auto-clear
+  POST /impair/inject_cue      — inject EXT-X-CUE-OUT into HLS manifest
+                                 (optional ?duration=<secs>, default 30)
 
   GET  /impair/status          — current profile as JSON
 """
@@ -34,6 +36,7 @@ import subprocess
 import threading
 import urllib.request
 import urllib.error
+import urllib.parse
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
 TARGETS = [
@@ -52,6 +55,8 @@ NETEM_PROFILES = {
 }
 
 ALL_PROFILES = set(NETEM_PROFILES) | {"stale_manifest"}
+# inject_cue is handled separately (not a netem profile)
+AD_PROFILES  = {"inject_cue"}
 
 _current_profile = "baseline"
 _lock = threading.Lock()
@@ -143,6 +148,40 @@ def _manifest_unfreeze() -> tuple[bool, str]:
         return False, str(e)
 
 
+# ── Ad cue helpers ────────────────────────────────────────────────────────────
+
+def _inject_cue(duration: int = 30, trace_id: str | None = None) -> dict:
+    try:
+        query = f"duration={duration}"
+        if trace_id:
+            query += f"&trace_id={urllib.parse.quote(trace_id)}"
+        req = urllib.request.Request(
+            f"{MANIFEST_PROXY_URL}/cue_out?{query}",
+            method="POST",
+            headers={"Content-Length": "0"},
+        )
+        with urllib.request.urlopen(req, timeout=5) as resp:
+            body = json.loads(resp.read())
+            print(f"[impair] cue-out armed — duration={duration}s trace_id={trace_id or '-'}")
+            return {
+                "ok": True,
+                "profile": "inject_cue",
+                "errors": [],
+                "auto_clear_secs": None,
+                "trace_id": trace_id,
+                "manifest_proxy": body,
+            }
+    except Exception as e:
+        print(f"[impair] inject_cue error trace_id={trace_id or '-'}: {e}")
+        return {
+            "ok": False,
+            "profile": "inject_cue",
+            "errors": [str(e)],
+            "auto_clear_secs": None,
+            "trace_id": trace_id,
+        }
+
+
 # ── Profile application ───────────────────────────────────────────────────────
 
 def apply_profile(profile: str) -> dict:
@@ -229,12 +268,19 @@ class Handler(BaseHTTPRequestHandler):
             self._send_json(404, {"error": "not found"})
 
     def do_POST(self):
-        path = self.path.rstrip("/")
-        profile = path.split("/")[-1]
+        import urllib.parse as _up
+        path    = self.path.rstrip("/")
+        parsed  = _up.urlparse(path)
+        profile = parsed.path.split("/")[-1]
+        qs      = dict(_up.parse_qsl(parsed.query))
         if not profile:
             self._send_json(400, {"error": "profile required"})
             return
-        result = apply_profile(profile)
+        if profile == "inject_cue":
+            duration = int(qs.get("duration", 30))
+            result   = _inject_cue(duration, qs.get("trace_id"))
+        else:
+            result = apply_profile(profile)
         self._send_json(200 if result["ok"] else 400, result)
 
 

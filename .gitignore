@@ -1,6 +1,12 @@
 # Local video assets — not committed to the repo
 videos/
 
+# Ad creative MP4s — drop folder; README.txt is committed but binaries are not
+ads/creative/*.mp4
+
+# Python bytecode caches
+**/__pycache__/
+
 # Claude Code worktrees
 .claude/worktrees/
 
