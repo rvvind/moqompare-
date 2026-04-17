@@ -122,3 +122,41 @@ Deliverables:
 - Usage: `./scripts/report.sh [--out report.md] [--no-browser]`
 
 Acceptance test: `./scripts/report.sh --no-browser` completes and produces a valid `report.md` with non-empty metric rows.
+
+---
+
+## Phase 8 — Presentation Workspace ✅
+
+**Goal:** Provide a purpose-built live demo workspace with scene flow, architecture map, and presenter controls.
+
+Deliverables:
+- `/present` audience-facing presentation workspace
+- Presenter controls rail and `/present/control` entrypoint
+- Scene model with narrative overlays and recommended impairments
+- Shared telemetry cards and audience readiness state
+
+Acceptance test: open `/present`, advance scenes, and observe the architecture map and telemetry update without opening developer tools.
+
+---
+
+## Phase 9 — MoQ Production Discovery & Republish
+
+**Goal:** Show MoQ as a production-pipeline fabric where discoverable streams can be managed and ultimately republished for downstream consumers.
+
+Current slice:
+- `registry/` service with bootstrap camera entries, self-registering live camera refresh, and a seeded always-on standby artifact
+- `/produce` production workspace preview with selected-source and program monitors
+- `/program` downstream monitor subscribed to the stable `stream_program` broadcast
+- `republisher/` service publishing a stable backend-owned program output
+- Live route intent changes for `lab/program/main`
+- Standby modifier flow that can override the routed source without changing the downstream subscription target
+- Event timeline streamed from the registry via SSE
+- Distinct alternate-angle feeds for `cam-a`, `cam-b`, and the standby slate sourced from `/videos/alt-angles`
+- Alternate-angle services register and heartbeat into the registry at runtime
+
+Planned follow-up:
+- Replace the restart-based republisher with a continuous program pipeline so source cuts happen inside one long-lived downstream broadcast
+- Generalized derived-artifact republish and lineage metadata
+- Additional modifiers such as replay, hold-last-frame, or insert workflows
+
+Acceptance test for the current slice: open `/produce`, confirm `cam-a`, `cam-b`, and `slate` all show visibly distinct alternate-angle video from `/videos/alt-angles`, route a camera to program, apply `Take Slate`, verify the program monitors stay on `stream_program` while the effective source becomes the standby artifact, clear the modifier, and confirm the routed camera returns without a page reload.

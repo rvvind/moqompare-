@@ -72,6 +72,9 @@ Dual renditions (hi @ 1080p / lo @ 360p) with independent ABR logic: hls.js mana
 **Presentation mode**  
 `/present` is a purpose-built single-screen workspace with a live architecture map, scene flow, shared telemetry cards, and a slide-out controls rail. Drive a demo without opening developer tools.
 
+**Production workspace preview**
+`/produce` now combines stream discovery, route intent changes, live MoQ source preview, a standby modifier override, and a stable backend-owned program monitor. `cam-a` and `cam-b` are backed by distinct files from `/videos/alt-angles` and self-register into the registry with heartbeat updates, while `slate` is an always-on standby source sourced from the same alternate-angle directory. A dedicated `/program` page subscribes to the republished `stream_program` output while the registry tracks both the routed source and the current effective upstream feeding it. Source changes currently use a restart-based republisher, so the demo shows routing and republish semantics clearly but does not yet provide seamless broadcast-style cuts.
+
 **Fan-out simulation**  
 Spin up N concurrent MoQ subscribers via a Docker Compose profile and observe aggregate startup time and stall counts across the group.
 
@@ -99,8 +102,19 @@ Browser-pushed metrics available at `:9090/metrics` and `:9090/snapshot`. Startu
   manifest-proxy (:8091)              relay (moq-relay :4443 QUIC+TCP)
       │  optional manifest freeze           │  WebTransport
       ▼                                     ▼
-  web (nginx :3000) ◄───────────────────────┘
+  angle-packager-cam-a / angle-packager-cam-b
+      │  single-rendition HLS from /videos/alt-angles
+      ├──────────────► origin (:8080)
+      └──────────────► publisher-cam-a / publisher-cam-b ─► relay
+
+  republisher (:8094) ◄──── registry (:8093)
+      │  moq-cli publish          ▲   route state
+      └───────────────► relay ────┘
+                       │
+  web (nginx :3000) ◄──┘
       │  hls.js player + hang-watch MoQ player
+      │  /produce  — production workspace preview
+      │  /program  — downstream program monitor
       │  /present  — presentation workspace
       │  /fanout   — fan-out demo
       │  /impair/  → impairment API (:8090)
@@ -113,8 +127,12 @@ Browser-pushed metrics available at `:9090/metrics` and `:9090/snapshot`. Startu
 | `packager` | Dual-rendition fMP4 HLS packager | — |
 | `origin` | nginx HLS segment server | 8080 |
 | `manifest-proxy` | Transparent proxy with manifest freeze capability | 8091 |
-| `publisher-hi/lo` | moq-cli: HLS ingest → QUIC publish | — |
+| `publisher-hi/lo` | moq-cli: comparison-path HLS ingest → QUIC publish | — |
+| `angle-packager-cam-a/b/slate` | Dedicated HLS packaging for Produce/Program alternate angles | — |
+| `publisher-cam-a/b/slate` | moq-cli: alternate-angle HLS ingest → QUIC publish | — |
 | `relay` | moq-relay: QUIC relay + WebTransport | **4443** |
+| `registry` | Production workspace stream registry (proxied via `web`) | — |
+| `republisher` | Stable backend-owned `stream_program` MoQ broadcast | — |
 | `web` | nginx: UI, proxies all internal services | **3000** |
 | `impairment` | `tc netem` HTTP API via nsenter | 8090 |
 | `metrics` | Prometheus metrics collector | 9090 |
@@ -152,6 +170,12 @@ open http://localhost:3000
 # Open the presentation workspace
 open http://localhost:3000/present
 
+# Open the production workspace preview
+open http://localhost:3000/produce
+
+# Open the downstream program monitor
+open http://localhost:3000/program
+
 # Open the fan-out demo
 open http://localhost:3000/fanout
 ```
@@ -161,15 +185,20 @@ open http://localhost:3000/fanout
 **Expected startup order:**
 1. `source` → creates FIFO, begins encoding (~10 s to healthy)
 2. `packager` → writes first HLS segments (~20 s to healthy)
-3. `origin`, `relay`, `manifest-proxy`, `web` → come up immediately after packager
+3. `origin`, `relay`, `manifest-proxy`, `registry`, `republisher`, `web` → come up immediately after packager
 4. `publisher-hi/lo` → connect to relay, begin ingesting HLS
-5. HLS plays in ~5–10 s; MoQ plays in ~10–15 s
+5. `republisher` → publishes stable `stream_program` based on the current registry route
+6. HLS plays in ~5–10 s; MoQ plays in ~10–15 s
 
 ---
 
 ## Using your own video
 
-Place any `.mp4` files in the `videos/` directory before running `make up`. The source container loops them end-to-end with a 999-repetition pre-expanded playlist, so playback continues uninterrupted for hundreds of hours without a pipeline restart.
+Place any `.mp4` files in the `videos/` directory before running `make up`. The comparison-path source container loops top-level files in `videos/` end-to-end with a 999-repetition pre-expanded playlist, so playback continues uninterrupted for hundreds of hours without a pipeline restart.
+
+Produce and Program use the dedicated files under `videos/alt-angles/` for `cam-a` and `cam-b`. Replace those files if you want different alternate-angle camera feeds in the production workspace.
+
+The standby slate for the production workspace is also sourced from `videos/alt-angles/` and is published continuously as `stream_slate` so the modifier flow can switch to it without waiting for an ad trigger.
 
 If `videos/` is empty, the source falls back to FFmpeg `testsrc2` (animated synthetic test pattern).
 
@@ -255,6 +284,16 @@ curl http://localhost:3000/metrics/snapshot  # proxied via web
 
 Fields: `player_startup_ms`, `player_latency_seconds`, `player_stalls_total`, `player_bitrate_bps` — labelled by `protocol` (`hls` / `moq`) and `impairment_profile`.
 
+The production workspace registry is also reachable through the web proxy:
+
+```sh
+curl http://localhost:3000/registry/api/status
+curl http://localhost:3000/registry/api/streams
+curl http://localhost:3000/republisher/status
+```
+
+`/republisher/status` exposes the currently selected upstream source, desired route, restart count, and the active `stream_program` publisher PID, which is useful when validating route changes from `/produce`.
+
 ---
 
 ## Troubleshooting
@@ -298,13 +337,18 @@ publisher/        moq-cli publisher (hi + lo renditions, built from source)
 relay/            moq-relay QUIC relay (built from source)
 impairment/       tc netem HTTP API (Python, privileged sidecar)
 metrics/          Prometheus metrics collector (browser-push model)
+registry/         Production workspace stream registry (Python, SSE + JSON)
+republisher/      Stable backend-owned program broadcaster (Python + moq-cli)
 fanout/           Concurrent MoQ subscriber simulation
 web/
   static/
     index.html              Side-by-side comparison UI
+    produce.html            Production workspace (discovery + route intent)
+    program.html            Downstream program monitor
     present.html            Presentation workspace
     present-control.html    Presenter remote control panel
     presentation/           CSS + JS modules for presentation mode
+    production/             CSS + JS modules for production workspace
 infra/            nginx configs
 scripts/          setup, run, demo, impair, report scripts
 docs/             Architecture notes, phase plan, impairment API reference
@@ -326,6 +370,9 @@ docs/             Architecture notes, phase plan, impairment API reference
 | 6 | Subscriber fan-out simulation |
 | 7 | Automated impairment comparison report |
 | 8 | Presentation workspace with scene flow and live architecture map |
+| 9 | Production workspace discovery, live preview, and stable republished program monitor |
+
+Phase 9 is currently a working preview slice: discovery, source preview, route intent, standby override, and downstream republish are all demonstrable, while seamless in-pipeline cuts remain a follow-on architecture slice.
 
 ---
 
