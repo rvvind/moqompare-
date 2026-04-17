@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>moqompare — Program Monitor</title>
+  <link rel="stylesheet" href="/production/shared.css" />
+</head>
+<body class="production-page program-page">
+  <div class="production-shell">
+    <header class="production-header">
+      <div class="header-copy">
+        <h1>moqompare — <span class="moq">MoQ</span> Program Monitor</h1>
+        <span class="phase-badge">Route-Following Downstream View</span>
+      </div>
+      <div class="header-actions">
+        <a class="header-link" href="/">Home</a>
+        <a class="header-link" href="/produce">Produce</a>
+        <a class="header-link" href="/compare">Compare</a>
+      </div>
+    </header>
+
+    <section class="production-note">
+      This monitor follows the current effective program state from the registry and stays subscribed to the stable
+      downstream `stream_program` output while routes and modifiers change upstream.
+    </section>
+
+    <main class="program-main">
+      <section class="panel program-monitor-panel">
+        <div class="panel-head">
+          <div>
+            <div class="panel-kicker">Downstream View</div>
+            <h2>Program Output</h2>
+          </div>
+          <div class="live-indicator" id="program-health">
+            <span class="dot"></span>
+            <span id="program-health-label">Connecting…</span>
+          </div>
+        </div>
+
+        <div class="program-monitor-body">
+          <article class="status-card route-card">
+            <div class="card-topline">Current output namespace</div>
+            <div class="route-namespace" id="program-page-namespace">lab/program/main</div>
+            <div class="route-summary" id="program-page-summary">Waiting for registry snapshot…</div>
+            <div class="route-meta" id="program-page-updated">No route changes yet.</div>
+          </article>
+
+          <article class="status-card media-card program-player-card">
+            <div class="media-head">
+              <div>
+                <div class="card-topline">Subscribed stream</div>
+                <div class="media-title" id="program-page-title">Waiting for route…</div>
+              </div>
+              <span class="meta-token" id="program-page-stream-name">No stream</span>
+            </div>
+            <div class="media-surface program-surface">
+              <div class="watch-slot" id="program-page-watch-slot"></div>
+              <div class="video-overlay" id="program-page-overlay">
+                <div class="spinner tone-moq"></div>
+                <div class="overlay-msg" id="program-page-status">Waiting for route…</div>
+              </div>
+            </div>
+            <div class="detail-grid">
+              <div class="detail-row">
+                <span>Source label</span>
+                <span id="program-page-source-label">—</span>
+              </div>
+              <div class="detail-row">
+                <span>Source namespace</span>
+                <code id="program-page-source-namespace">—</code>
+              </div>
+              <div class="detail-row">
+                <span>Resolution</span>
+                <span id="program-page-resolution">—</span>
+              </div>
+            </div>
+          </article>
+        </div>
+      </section>
+
+      <section class="panel timeline-panel">
+        <div class="panel-head">
+          <div>
+            <div class="panel-kicker">Operator Events</div>
+            <h2>Recent Timeline</h2>
+          </div>
+          <div class="pill subtle" id="program-page-event-count">0 events</div>
+        </div>
+        <div class="timeline-list" id="program-page-timeline"></div>
+      </section>
+    </main>
+  </div>
+
+  <script type="module" src="/hang.js"></script>
+  <script type="module" src="/production/program.js"></script>
+</body>
+</html>

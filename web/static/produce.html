@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>moqompare — Production Workspace</title>
+  <link rel="stylesheet" href="/production/shared.css" />
+</head>
+<body class="production-page">
+  <div class="production-shell">
+    <header class="production-header">
+      <div class="header-copy">
+        <h1>moqompare — <span class="moq">MoQ</span> Production Workspace</h1>
+        <span class="phase-badge">Control Plane Preview</span>
+      </div>
+      <div class="header-actions">
+        <a class="header-link" href="/">Home</a>
+        <a class="header-link" href="/compare">Compare</a>
+        <a class="header-link" href="/present">Present</a>
+        <a class="header-link" href="/program">Program</a>
+      </div>
+    </header>
+
+    <section class="production-note">
+      This slice adds a modifier-aware program workflow on top of live source discovery, operator routing controls,
+      stable republish, and the shared event timeline.
+    </section>
+
+    <main class="production-main">
+      <section class="panel catalog-panel">
+        <div class="panel-head">
+          <div>
+            <div class="panel-kicker">Discovery</div>
+            <h2>Catalog</h2>
+          </div>
+          <div class="pill subtle" id="catalog-count">0 streams</div>
+        </div>
+        <div class="catalog-stage">
+          <article class="status-card media-card catalog-preview-card">
+            <div class="media-head">
+              <div>
+                <div class="card-topline">Live Source Preview</div>
+                <div class="media-title" id="preview-title">Waiting for selection…</div>
+              </div>
+              <span class="meta-token" id="preview-stream-name">No stream</span>
+            </div>
+            <div class="media-surface catalog-preview-surface">
+              <div class="watch-slot" id="preview-watch-slot"></div>
+              <div class="video-overlay" id="preview-overlay">
+                <div class="spinner tone-moq"></div>
+                <div class="overlay-msg" id="preview-status">Waiting for stream…</div>
+              </div>
+            </div>
+            <div class="detail-row compact-detail-row">
+              <span>Resolution</span>
+              <span id="preview-resolution">—</span>
+            </div>
+          </article>
+          <div class="catalog-list" id="catalog-list"></div>
+        </div>
+      </section>
+
+      <section class="panel operator-panel">
+        <div class="panel-head">
+          <div>
+            <div class="panel-kicker">Operator</div>
+            <h2>Program Route</h2>
+          </div>
+          <div class="live-indicator" id="registry-health">
+            <span class="dot"></span>
+            <span id="health-label">Connecting…</span>
+          </div>
+        </div>
+
+        <article class="status-card route-card">
+          <div class="card-topline">Current output namespace</div>
+          <div class="route-namespace" id="program-namespace">lab/program/main</div>
+          <div class="route-summary" id="program-summary">Waiting for registry snapshot…</div>
+          <div class="route-meta" id="program-updated">No route changes yet.</div>
+        </article>
+
+        <article class="status-card media-card">
+          <div class="media-head">
+            <div>
+              <div class="card-topline">Program Monitor</div>
+              <div class="media-title" id="program-title">Waiting for route…</div>
+            </div>
+            <span class="meta-token" id="program-stream-name">No stream</span>
+          </div>
+          <div class="media-surface">
+            <div class="watch-slot" id="program-watch-slot"></div>
+            <div class="video-overlay" id="program-overlay">
+              <div class="spinner tone-moq"></div>
+              <div class="overlay-msg" id="program-status">Waiting for route…</div>
+            </div>
+          </div>
+          <div class="detail-row">
+            <span>Resolution</span>
+            <span id="program-resolution">—</span>
+          </div>
+        </article>
+
+        <article class="status-card selection-card">
+          <div class="card-topline">Selected source</div>
+          <div class="selection-title" id="selection-title">Choose a source from the catalog</div>
+          <div class="selection-summary" id="selection-summary">
+            The source detail card explains what will feed program whenever no modifier is active.
+          </div>
+          <div class="detail-grid">
+            <div class="detail-row">
+              <span>Namespace</span>
+              <code id="selection-namespace">—</code>
+            </div>
+            <div class="detail-row">
+              <span>Kind</span>
+              <span id="selection-kind">—</span>
+            </div>
+            <div class="detail-row">
+              <span>Status</span>
+              <span id="selection-status">—</span>
+            </div>
+            <div class="detail-row">
+              <span>Media ready</span>
+              <span id="selection-media-ready">—</span>
+            </div>
+          </div>
+          <div class="tag-row" id="selection-tags"></div>
+          <div class="action-row">
+            <button class="primary-btn" id="take-program-btn" type="button" disabled>Take to Program</button>
+            <span class="action-hint">Route intent updates the control plane immediately.</span>
+          </div>
+        </article>
+
+        <article class="status-card modifier-card">
+          <div class="card-topline">Program Modifier</div>
+          <div class="selection-title" id="modifier-title">No modifier active</div>
+          <div class="selection-summary" id="modifier-summary">
+            Program currently follows the routed source directly.
+          </div>
+          <div class="action-row">
+            <button class="secondary-btn" id="take-slate-btn" type="button">Take Slate</button>
+            <button class="secondary-btn" id="clear-modifier-btn" type="button" disabled>Clear Modifier</button>
+            <span class="action-hint">Modifiers temporarily override the routed camera while `stream_program` stays stable downstream.</span>
+          </div>
+        </article>
+
+        <article class="status-card callout-card">
+          <div class="card-topline">Next slice</div>
+          <p>
+            Derived artifact republish and lineage metadata come next after the modifier flow is stable.
+          </p>
+        </article>
+      </section>
+
+      <section class="panel timeline-panel">
+        <div class="panel-head">
+          <div>
+            <div class="panel-kicker">Observability</div>
+            <h2>Event Timeline</h2>
+          </div>
+          <div class="pill subtle" id="event-count">0 events</div>
+        </div>
+        <div class="timeline-list" id="timeline-list"></div>
+      </section>
+    </main>
+  </div>
+
+  <script type="module" src="/hang.js"></script>
+  <script type="module" src="/production/produce.js"></script>
+</body>
+</html>

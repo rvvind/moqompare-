@@ -13,6 +13,10 @@ ads/creative/*.mp4
 # Environment overrides
 .env
 
+# Local frontend dependencies
+web/node_modules/
+web/static/hang.js
+
 # OS / editor noise
 .DS_Store
 *.swp
