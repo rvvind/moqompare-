@@ -101,7 +101,118 @@ services:
       retries: 3
       start_period: 5s
 
-  # ── 4a. MoQ publisher — hi rendition ────────────────────────────────────
+  # ── 4a. Alternate-angle HLS packager — cam-a ────────────────────────────
+  angle-packager-cam-a:
+    build:
+      context: ./angle-packager
+    container_name: moqompare-angle-packager-cam-a
+    restart: unless-stopped
+    volumes:
+      - media:/media
+      - ${VIDEOS_DIR:-./videos}:/videos:ro
+    networks:
+      - moqompare
+    environment:
+      - ANGLE_STREAM_KEY=cam-a
+      - ANGLE_LABEL=Camera A
+      - ANGLE_NAMESPACE=lab/source/cam-a
+      - ANGLE_PLAYBACK_STREAM_NAME=stream_cam_a
+      - ANGLE_SUMMARY=Primary alternate-angle source backed by the coastal-waves camera file from /videos/alt-angles.
+      - ANGLE_TAGS=line-cut,primary,alt-angle
+      - ANGLE_VIDEO_FILE=/videos/alt-angles/coastal-waves-ocean-4k.mp4
+      - ANGLE_OUTPUT_DIR=/media/hls/angles/cam-a
+      - REGISTRY_URL=http://registry:8093
+      - ANGLE_RESOLUTION=${SOURCE_RESOLUTION:-1920x1080}
+      - ANGLE_FPS=${SOURCE_FPS:-30}
+      - ANGLE_BITRATE=${SOURCE_BITRATE:-4000k}
+      - HLS_SEGMENT_DURATION=${HLS_SEGMENT_DURATION:-2}
+      - HLS_LIST_SIZE=${HLS_LIST_SIZE:-5}
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "test -f /media/hls/angles/cam-a/master.m3u8 && test -f /media/hls/angles/cam-a/init.mp4 && ls /media/hls/angles/cam-a/seg_*.m4s >/dev/null 2>&1",
+        ]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 15s
+
+  # ── 4b. Alternate-angle HLS packager — cam-b ────────────────────────────
+  angle-packager-cam-b:
+    build:
+      context: ./angle-packager
+    container_name: moqompare-angle-packager-cam-b
+    restart: unless-stopped
+    volumes:
+      - media:/media
+      - ${VIDEOS_DIR:-./videos}:/videos:ro
+    networks:
+      - moqompare
+    environment:
+      - ANGLE_STREAM_KEY=cam-b
+      - ANGLE_LABEL=Camera B
+      - ANGLE_NAMESPACE=lab/source/cam-b
+      - ANGLE_PLAYBACK_STREAM_NAME=stream_cam_b
+      - ANGLE_SUMMARY=Secondary alternate-angle source backed by the island-coast aerial file from /videos/alt-angles.
+      - ANGLE_TAGS=alternate,secondary,alt-angle
+      - ANGLE_VIDEO_FILE=/videos/alt-angles/island-coast-aerial.mp4
+      - ANGLE_OUTPUT_DIR=/media/hls/angles/cam-b
+      - REGISTRY_URL=http://registry:8093
+      - ANGLE_RESOLUTION=${SOURCE_RESOLUTION:-1920x1080}
+      - ANGLE_FPS=${SOURCE_FPS:-30}
+      - ANGLE_BITRATE=${SOURCE_BITRATE:-4000k}
+      - HLS_SEGMENT_DURATION=${HLS_SEGMENT_DURATION:-2}
+      - HLS_LIST_SIZE=${HLS_LIST_SIZE:-5}
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "test -f /media/hls/angles/cam-b/master.m3u8 && test -f /media/hls/angles/cam-b/init.mp4 && ls /media/hls/angles/cam-b/seg_*.m4s >/dev/null 2>&1",
+        ]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 15s
+
+  # ── 4c. Alternate-angle HLS packager — standby slate ─────────────────────
+  angle-packager-slate:
+    build:
+      context: ./angle-packager
+    container_name: moqompare-angle-packager-slate
+    restart: unless-stopped
+    volumes:
+      - media:/media
+      - ${VIDEOS_DIR:-./videos}:/videos:ro
+    networks:
+      - moqompare
+    environment:
+      - ANGLE_STREAM_KEY=slate
+      - ANGLE_LABEL=Standby Slate
+      - ANGLE_NAMESPACE=lab/source/slate
+      - ANGLE_PLAYBACK_STREAM_NAME=stream_slate
+      - ANGLE_SUMMARY=Standby artifact sourced from the tropical-ocean-coast file in /videos/alt-angles.
+      - ANGLE_TAGS=standby,artifact,alt-angle
+      - ANGLE_VIDEO_FILE=/videos/alt-angles/tropical-ocean-coast.mp4
+      - ANGLE_OUTPUT_DIR=/media/hls/angles/slate
+      - REGISTRY_URL=http://registry:8093
+      - ANGLE_RESOLUTION=${SOURCE_RESOLUTION:-1920x1080}
+      - ANGLE_FPS=${SOURCE_FPS:-30}
+      - ANGLE_BITRATE=${SOURCE_BITRATE:-4000k}
+      - HLS_SEGMENT_DURATION=${HLS_SEGMENT_DURATION:-2}
+      - HLS_LIST_SIZE=${HLS_LIST_SIZE:-5}
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "test -f /media/hls/angles/slate/master.m3u8 && test -f /media/hls/angles/slate/init.mp4 && ls /media/hls/angles/slate/seg_*.m4s >/dev/null 2>&1",
+        ]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 15s
+
+  # ── 5a. MoQ publisher — hi rendition ────────────────────────────────────
   # Publishes the hi-rendition (source resolution/bitrate) as broadcast
   # "stream_hi".  The JS ABR controller subscribes to this by default and
   # falls back to stream_lo when measured bandwidth drops below threshold.
@@ -133,7 +244,7 @@ services:
       retries: 3
       start_period: 5s
 
-  # ── 4b. MoQ publisher — lo rendition ────────────────────────────────────
+  # ── 5b. MoQ publisher — lo rendition ────────────────────────────────────
   # Publishes the lo-rendition (640×360 @ ABR_LO_BITRATE) as broadcast
   # "stream_lo".  The JS ABR controller switches to this broadcast when
   # bandwidth falls below the hi-rendition threshold.
@@ -165,7 +276,100 @@ services:
       retries: 3
       start_period: 5s
 
-  # ── 5. MoQ relay ──────────────────────────────────────────────────────────
+  # ── 5c. MoQ publisher — program source cam-a ────────────────────────────
+  publisher-cam-a:
+    image: ghcr.io/rvvind/moqompare-publisher:latest
+    build:
+      context: ./publisher
+    container_name: moqompare-publisher-cam-a
+    restart: unless-stopped
+    command: >
+      publish
+      --url http://relay:4443
+      --name stream_cam_a
+      hls
+      --playlist http://origin/hls/angles/cam-a/master.m3u8
+    networks:
+      - moqompare
+    depends_on:
+      origin:
+        condition: service_healthy
+      relay:
+        condition: service_healthy
+      angle-packager-cam-a:
+        condition: service_healthy
+    environment:
+      - MOQ_LOG_LEVEL=${LOG_LEVEL:-info}
+    healthcheck:
+      test: ["CMD", "sh", "-c", "exit 0"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
+
+  # ── 5d. MoQ publisher — program source cam-b ────────────────────────────
+  publisher-cam-b:
+    image: ghcr.io/rvvind/moqompare-publisher:latest
+    build:
+      context: ./publisher
+    container_name: moqompare-publisher-cam-b
+    restart: unless-stopped
+    command: >
+      publish
+      --url http://relay:4443
+      --name stream_cam_b
+      hls
+      --playlist http://origin/hls/angles/cam-b/master.m3u8
+    networks:
+      - moqompare
+    depends_on:
+      origin:
+        condition: service_healthy
+      relay:
+        condition: service_healthy
+      angle-packager-cam-b:
+        condition: service_healthy
+    environment:
+      - MOQ_LOG_LEVEL=${LOG_LEVEL:-info}
+    healthcheck:
+      test: ["CMD", "sh", "-c", "exit 0"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
+
+  # ── 5e. MoQ publisher — standby slate source ─────────────────────────────
+  publisher-slate:
+    image: ghcr.io/rvvind/moqompare-publisher:latest
+    build:
+      context: ./publisher
+    container_name: moqompare-publisher-slate
+    restart: unless-stopped
+    command: >
+      publish
+      --url http://relay:4443
+      --name stream_slate
+      hls
+      --playlist http://origin/hls/angles/slate/master.m3u8
+    networks:
+      - moqompare
+    depends_on:
+      origin:
+        condition: service_healthy
+      relay:
+        condition: service_healthy
+      angle-packager-slate:
+        condition: service_healthy
+    environment:
+      - MOQ_LOG_LEVEL=${LOG_LEVEL:-info}
+    healthcheck:
+      test: ["CMD", "sh", "-c", "exit 0"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
+
+  # ── 6. MoQ relay ──────────────────────────────────────────────────────────
   # Built from source without jemalloc (the published image crashes on
   # Docker Desktop / macOS due to jemalloc profiling kernel requirements).
   # Serves QUIC/WebTransport on UDP 4443 and plain HTTP on TCP 4443
@@ -199,7 +403,7 @@ services:
       retries: 12
       start_period: 10s
 
-  # ── 6. Manifest proxy ─────────────────────────────────────────────────────
+  # ── 7. Manifest proxy ─────────────────────────────────────────────────────
   # Proxies HLS manifests from origin and can freeze them to simulate stale
   # playlists without affecting segment delivery or the MoQ path.
   manifest-proxy:
@@ -223,7 +427,58 @@ services:
       retries: 6
       start_period: 5s
 
-  # ── 7. Browser UI ─────────────────────────────────────────────────────────
+  # ── 8. Stream registry ───────────────────────────────────────────────────
+  # Production workspace control-plane service. Seeds a discoverable source
+  # catalog now; later slices will add publisher heartbeats and richer source
+  # registration around the same API.
+  registry:
+    build:
+      context: ./registry
+    container_name: moqompare-registry
+    restart: unless-stopped
+    networks:
+      - moqompare
+    environment:
+      - REGISTRY_PORT=${REGISTRY_PORT:-8093}
+      - REGISTRY_STREAM_TTL_SECS=${REGISTRY_STREAM_TTL_SECS:-15}
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O- http://127.0.0.1:8093/health | grep -q ok"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 5s
+
+  # ── 9. Program republisher ────────────────────────────────────────────────
+  # Maintains a stable downstream MoQ broadcast by publishing the currently
+  # selected program source playlist under a fixed stream name.
+  republisher:
+    build:
+      context: ./republisher
+    container_name: moqompare-republisher
+    restart: unless-stopped
+    networks:
+      - moqompare
+    environment:
+      - REPUBLISHER_PORT=${REPUBLISHER_PORT:-8094}
+      - REGISTRY_URL=http://registry:8093
+      - RELAY_URL=http://relay:4443
+      - PROGRAM_STREAM_NAME=${PROGRAM_STREAM_NAME:-stream_program}
+      - REPUBLISHER_POLL_INTERVAL_SECS=${REPUBLISHER_POLL_INTERVAL_SECS:-1.0}
+    depends_on:
+      origin:
+        condition: service_healthy
+      relay:
+        condition: service_healthy
+      registry:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O- http://127.0.0.1:8094/health | grep -q ok"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 5s
+
+  # ── 10. Browser UI ────────────────────────────────────────────────────────
   # Built image bundles hls.js; nginx proxies /hls/ to origin.
   web:
     image: ghcr.io/rvvind/moqompare-web:latest
@@ -244,6 +499,10 @@ services:
         condition: service_healthy
       manifest-proxy:
         condition: service_healthy
+      registry:
+        condition: service_healthy
+      republisher:
+        condition: service_healthy
       impairment:
         condition: service_healthy
       metrics:
@@ -257,7 +516,7 @@ services:
       retries: 3
       start_period: 10s
 
-  # ── 8. Impairment controller ──────────────────────────────────────────────
+  # ── 10. Impairment controller ─────────────────────────────────────────────
   # Privileged container with pid:host so it can nsenter into origin/relay
   # network namespaces and apply tc netem rules without modifying those images.
   impairment:
@@ -291,7 +550,7 @@ services:
       retries: 6
       start_period: 5s
 
-  # ── 10. Fan-out subscriber simulator (Phase 6) ───────────────────────────
+  # ── 12. Fan-out subscriber simulator (Phase 6) ───────────────────────────
   # Spawns FANOUT_N concurrent moq-relay cluster nodes, each connecting to the
   # main relay as a cluster peer (simulating N concurrent subscribers).
   # Inactive by default — start with:  docker compose --profile fanout up -d fanout
@@ -317,7 +576,7 @@ services:
     depends_on:
       - relay
 
-  # ── 11. Ad server ─────────────────────────────────────────────────────────
+  # ── 13. Ad server ─────────────────────────────────────────────────────────
   # Watches /media/ads/creative/ for dropped .mp4 files; pre-processes each
   # to fMP4 HLS on arrival. Serves VAST 3.0 XML, ad HLS files, and tracking
   # beacons. Polls the live HLS manifest for EXT-X-CUE-OUT markers and
@@ -354,7 +613,7 @@ services:
       retries: 3
       start_period: 10s
 
-  # ── 9. Metrics collector ──────────────────────────────────────────────────
+  # ── 11. Metrics collector ─────────────────────────────────────────────────
   # Receives JSON metric reports from the browser (POST /report).
   # Exposes Prometheus metrics at GET /metrics and JSON snapshot at /snapshot.
   metrics:

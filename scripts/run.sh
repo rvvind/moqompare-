@@ -64,6 +64,8 @@ ORIGIN_PORT="${ORIGIN_PORT:-8080}"
 
 echo ""
 echo "  Browser UI  : http://localhost:${WEB_PORT}"
+echo "  Produce UI  : http://localhost:${WEB_PORT}/produce"
+echo "  Program UI  : http://localhost:${WEB_PORT}/program"
 echo "  HLS origin  : http://localhost:${ORIGIN_PORT}/hls/"
 echo ""
 echo "Run 'make logs' to stream logs."
