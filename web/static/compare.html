@@ -31,25 +31,46 @@
     }
 
     /* ── Header ─────────────────────────────────────────────────────────── */
-    header {
+    .app-header {
       display: flex;
       align-items: center;
-      justify-content: space-between;
-      padding: 12px 20px;
-      border-bottom: 1px solid var(--border);
+      gap: 14px;
+      padding: 8px 20px;
       background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      flex-wrap: wrap;
     }
-    header h1 { font-size: 15px; font-weight: 600; letter-spacing: 0.05em; }
-    header h1 span.hls { color: var(--accent-hls); }
-    header h1 span.moq { color: var(--accent-moq); }
+    .header-copy {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+    .app-header h1 {
+      font-size: 14px;
+      font-weight: 700;
+      letter-spacing: 0.04em;
+      white-space: nowrap;
+    }
+    .app-header h1 span.hls { color: var(--accent-hls); }
+    .app-header h1 span.moq { color: var(--accent-moq); }
     .phase-badge {
       background: var(--border);
       color: var(--text-muted);
       border-radius: 4px;
       padding: 3px 8px;
       font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
     }
-    .fanout-link {
+    .header-actions {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-left: auto;
+      flex-wrap: wrap;
+    }
+    .header-link {
       color: var(--accent-moq);
       text-decoration: none;
       font-size: 12px;
@@ -58,7 +79,13 @@
       padding: 3px 10px;
       transition: background 0.15s;
     }
-    .fanout-link:hover { background: rgba(168,85,247,0.15); }
+    .header-link:hover,
+    .header-link[aria-current="page"] {
+      background: rgba(168,85,247,0.15);
+    }
+    .header-link[aria-current="page"] {
+      color: var(--text);
+    }
 
     /* ── Impairment bar ──────────────────────────────────────────────────── */
     .impairment-bar {
@@ -235,14 +262,14 @@
     @keyframes spin { to { transform: rotate(360deg); } }
     .overlay-msg { color: var(--text-muted); font-size: 12px; }
 
-    /* hang-watch fills the video area like a <video> element */
-    hang-watch {
+    /* moq-watch fills the video area like a <video> element */
+    moq-watch {
       width: 100%;
       height: 100%;
       display: block;
       background: #080a10;
     }
-    hang-watch canvas {
+    moq-watch canvas {
       width: 100%;
       height: 100%;
       object-fit: contain;
@@ -329,11 +356,18 @@
 <body>
 
   <!-- ── Header ──────────────────────────────────────────────────────────── -->
-  <header>
-    <h1>moqompare &mdash; <span class="hls">HLS</span> vs <span class="moq">MoQ</span></h1>
-    <div style="display:flex;align-items:center;gap:10px;">
-      <a class="fanout-link" href="/fanout">Fanout Demo &rarr;</a>
-      <span class="phase-badge">Phase 5 &mdash; ABR Ladder</span>
+  <header class="app-header">
+    <div class="header-copy">
+      <h1>moqompare &mdash; <span class="hls">HLS</span> vs <span class="moq">MoQ</span></h1>
+      <span class="phase-badge">Comparison Workspace</span>
+    </div>
+    <div class="header-actions">
+      <a class="header-link" href="/">Home</a>
+      <a class="header-link" href="/compare" aria-current="page">Compare</a>
+      <a class="header-link" href="/present">Present</a>
+      <a class="header-link" href="/fanout">Fanout</a>
+      <a class="header-link" href="/produce">Produce</a>
+      <a class="header-link" href="/program">Program</a>
     </div>
   </header>
 
@@ -443,9 +477,9 @@
         </div>
       </div>
       <div class="video-area" style="position:relative">
-        <hang-watch id="moq-watch" muted latency="2000">
+        <moq-watch id="moq-watch" muted latency="1000">
           <canvas></canvas>
-        </hang-watch>
+        </moq-watch>
         <div id="ad-overlay" style="display:none;position:absolute;top:8px;left:8px;display:none;gap:8px;align-items:center;z-index:10;flex-direction:row;">
           <span class="ad-badge">AD</span>
           <span id="ad-countdown" style="font-size:11px;color:#fff;font-weight:600;text-shadow:0 1px 3px rgba(0,0,0,0.8);"></span>
@@ -535,7 +569,7 @@
         'switches to the lo-rendition (640&times;360 @ 500&thinsp;kbps).&ensp;' +
         '<span class="proto moq">MoQ (QUIC)</span> &mdash; ' +
         'The JS ABR controller reads hls.js&rsquo;s bandwidth estimate. Once it falls below ' +
-        '3.6&thinsp;Mbps for 3 consecutive seconds, it switches the hang-watch element from ' +
+        '3.6&thinsp;Mbps for 3 consecutive seconds, it switches the MoQ watch element from ' +
         '<em>stream_hi</em> to <em>stream_lo</em> (640&times;360 @ 500&thinsp;kbps). ' +
         'Recovery back to hi triggers when bandwidth exceeds 5.2&thinsp;Mbps for 3 s.',
       outage:
@@ -548,7 +582,7 @@
         'MoQ recovery is typically faster because QUIC re-establishes in 1 RTT (0-RTT on retry).',
       stale_manifest:
         '<span class="proto hls">HLS (TCP)</span> &mdash; ' +
-        'The player polls the manifest every ~2&thinsp;s to discover new segments. ' +
+        'The player polls the manifest on a sub-second cadence to discover new segments. ' +
         'With the manifest frozen, it receives the same stale segment list on every poll. ' +
         'The last known segment is already buffered &mdash; the player stalls indefinitely ' +
         'even though bandwidth and the segment server are fully healthy. ' +
@@ -746,8 +780,8 @@
       }
     } else {
       const hls = new Hls({
-        liveSyncDurationCount:      3,   // stay ~3 segments behind live edge
-        liveMaxLatencyDurationCount: 60, // allow up to 120 s of lag before seeking
+        liveSyncDurationCount:      6,   // stay ~3 s behind live edge with 500 ms segments
+        liveMaxLatencyDurationCount: 240, // allow up to 120 s of lag before seeking
         maxLiveSyncPlaybackRate:    1.0, // no speed-up catch-up — lag stays visible
         maxBufferLength:            10,
         enableWorker:               true,
@@ -960,11 +994,11 @@
     addEvent('page loaded — connecting to ' + HLS_URL, 'good');
   </script>
 
-  <!-- MoQ player (hang-watch custom element, loaded as ES module) -->
-  <!-- MoQ player (hang-watch custom element, loaded as ES module) -->
+  <!-- MoQ player (moq-watch custom element, loaded as ES module) -->
+  <!-- MoQ player (moq-watch custom element, loaded as ES module) -->
   <script type="module" src="/hang.js"></script>
   <script type="module">
-    await customElements.whenDefined('hang-watch');
+    await customElements.whenDefined('moq-watch');
 
     const MOQ_URL = 'http://' + window.location.hostname + ':4443';
     const MOQ_HI  = 'stream_hi';
@@ -1047,15 +1081,15 @@
 
     function _getWatchSnapshot(el) {
       if (!el) return null;
-      const instance = el.active ? el.active.peek() : undefined;
-      const broad = instance?.broadcast?.status ? instance.broadcast.status.peek() : undefined;
+      const activeBroadcast = el.broadcast?.active ? el.broadcast.active.peek() : undefined;
+      const broad = el.broadcast?.status ? el.broadcast.status.peek() : undefined;
       const canvas = el.querySelector('canvas');
       return {
         label: _watchLabel(el),
         id: el.id || '',
         name: el.name || '',
         broad: broad || 'none',
-        hasInstance: Boolean(instance),
+        hasInstance: Boolean(activeBroadcast),
         visible: el.style.visibility !== 'hidden' && el.style.opacity !== '0',
         canvas: canvas ? (canvas.width + 'x' + canvas.height) : 'none',
       };
@@ -1079,10 +1113,10 @@
     }
 
     function _makeWatchEl(id, absolute = false) {
-      const el = document.createElement('hang-watch');
+      const el = document.createElement('moq-watch');
       el.id = id;
       el.setAttribute('muted', '');
-      el.setAttribute('latency', watchEl.getAttribute('latency') || '2000');
+      el.setAttribute('latency', watchEl.getAttribute('latency') || '1000');
       el.innerHTML = '<canvas></canvas>';
       if (absolute) {
         el.style.position = 'absolute';
@@ -1356,10 +1390,10 @@
 
     // ── Poll broadcast status and canvas metrics ──────────────────────────
     setInterval(function () {
-      const instance = watchEl.active ? watchEl.active.peek() : undefined;
+      const activeBroadcast = watchEl.broadcast?.active ? watchEl.broadcast.active.peek() : undefined;
 
       // No active instance: WebTransport session dropped entirely.
-      if (!instance) {
+      if (!activeBroadcast) {
         if (moqStartupDone) {
           if (moqDeadSince === null) {
             moqDeadSince        = performance.now();
@@ -1373,8 +1407,8 @@
         return;
       }
 
-      const broad = instance.broadcast.status
-        ? instance.broadcast.status.peek()
+      const broad = watchEl.broadcast?.status
+        ? watchEl.broadcast.status.peek()
         : undefined;
 
       if (broad === 'offline' || broad === undefined) {

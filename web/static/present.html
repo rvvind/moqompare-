@@ -9,11 +9,18 @@
 <body class="presentation-page">
   <div class="present-shell">
     <header class="present-header">
-      <div class="present-brand">
+      <div class="header-copy">
         <h1>moqompare — <span class="hls">HLS</span> vs <span class="moq">MoQ</span></h1>
-        <span class="present-badge">Presentation Workspace</span>
+        <span class="phase-badge">Presentation Workspace</span>
       </div>
-      <span class="present-link">Single-Screen Live Demo</span>
+      <div class="header-actions">
+        <a class="header-link" href="/">Home</a>
+        <a class="header-link" href="/compare">Compare</a>
+        <a class="header-link" href="/present" aria-current="page">Present</a>
+        <a class="header-link" href="/fanout">Fanout</a>
+        <a class="header-link" href="/produce">Produce</a>
+        <a class="header-link" href="/program">Program</a>
+      </div>
     </header>
 
     <button
@@ -209,9 +216,9 @@
               </div>
             </div>
             <div class="video-surface">
-              <hang-watch id="moq-watch" muted latency="2000">
+              <moq-watch id="moq-watch" muted latency="1000">
                 <canvas></canvas>
-              </hang-watch>
+              </moq-watch>
               <div class="video-overlay" id="moq-overlay">
                 <div class="spinner" style="color: var(--accent-moq)"></div>
                 <div class="status" id="moq-status">Connecting to MoQ relay…</div>
