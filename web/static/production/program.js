@@ -30,7 +30,7 @@ const player = {
   watchEl: null,
   currentStreamName: "",
   currentRouteKey: "",
-  currentLatencyMs: 2000,
+  currentLatency: "real-time",
   reconnectAttempt: 0,
   nextReconnectAt: 0,
 };
@@ -64,7 +64,7 @@ function forceReconnect(playerRef) {
     refs.watchSlot,
     playerRef.watchEl,
     playerRef.currentStreamName,
-    playerRef.currentLatencyMs,
+    playerRef.currentLatency,
   );
 }
 
@@ -120,12 +120,12 @@ function syncPlayer() {
   const routeChanged = player.currentRouteKey !== routeKey;
 
   if (streamChanged || routeChanged) {
-    player.currentLatencyMs = playback.latency_ms || 2000;
+    player.currentLatency = playback.latency || playback.latency_ms || "real-time";
     player.watchEl = retuneWatch(
       refs.watchSlot,
       player.watchEl,
       streamName,
-      player.currentLatencyMs,
+      player.currentLatency,
     );
     player.currentStreamName = streamName;
     player.currentRouteKey = routeKey;

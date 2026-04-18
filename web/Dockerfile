@@ -8,7 +8,7 @@ RUN apk add --no-cache wget && \
       "https://cdn.jsdelivr.net/npm/hls.js@${HLS_JS_VERSION}/dist/hls.min.js" && \
     echo "hls.js ${HLS_JS_VERSION} downloaded ($(wc -c < /hls.min.js) bytes)"
 
-# ── Stage 2: bundle hang-watch MoQ player ────────────────────────────────
+# ── Stage 2: bundle MoQ watch player ─────────────────────────────────────
 FROM node:20-alpine AS moq-builder
 
 WORKDIR /build

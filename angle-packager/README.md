@@ -25,8 +25,10 @@ Dedicated live HLS packager for the Produce/Program alternate-angle feeds.
 | `ANGLE_RESOLUTION` | `1920x1080` | Output resolution |
 | `ANGLE_FPS` | `30` | Output frame rate |
 | `ANGLE_BITRATE` | `3500k` | Video bitrate |
-| `HLS_SEGMENT_DURATION` | `2` | Segment duration in seconds |
-| `HLS_LIST_SIZE` | `5` | Rolling manifest length |
+| `ANGLE_HLS_SEGMENT_DURATION` | `0.5` | Segment duration in seconds for the Produce/Program path |
+| `ANGLE_HLS_LIST_SIZE` | `10` | Rolling manifest length for the Produce/Program path |
+| `HLS_SEGMENT_DURATION` | `2` | Fallback segment duration when the angle-specific variable is unset |
+| `HLS_LIST_SIZE` | `5` | Fallback rolling manifest length when the angle-specific variable is unset |
 
 ## Output layout
 
@@ -41,6 +43,10 @@ Produce and Program use these HLS outputs as the source of truth for:
 
 - source preview MoQ broadcasts (`stream_cam_a`, `stream_cam_b`)
 - stable program republish input for `stream_program`
+
+The default production profile uses 500 ms segments for the alternate-angle
+feeds so the MoQ preview/program path can run at a visibly lower latency than
+the original 2-second production slice.
 
 When `REGISTRY_URL` is set, each angle-packager instance also:
 

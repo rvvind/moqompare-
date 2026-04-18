@@ -19,10 +19,22 @@ set -e
 
 PIPE="/media/source.pipe"
 HLS_DIR="/media/hls"
-SEG_DUR="${HLS_SEGMENT_DURATION:-2}"
-LIST_SIZE="${HLS_LIST_SIZE:-5}"
+SEG_DUR="${COMPARE_HLS_SEGMENT_DURATION:-${HLS_SEGMENT_DURATION:-2}}"
+LIST_SIZE="${COMPARE_HLS_LIST_SIZE:-${HLS_LIST_SIZE:-5}}"
 SOURCE_FPS="${SOURCE_FPS:-30}"
-GOP_SIZE=$(( SEG_DUR * SOURCE_FPS ))
+GOP_SIZE=$(
+  awk -v seg="${SEG_DUR}" -v fps="${SOURCE_FPS}" '
+    BEGIN {
+      value = seg * fps
+      if (value < 1) value = 1
+      if (value == int(value)) {
+        printf "%d", value
+      } else {
+        printf "%d", int(value + 0.5)
+      }
+    }
+  '
+)
 
 # High rendition: mirrors the source
 HI_BITRATE="${SOURCE_BITRATE:-4000k}"
@@ -124,7 +136,7 @@ while true; do
 
   write_master
   echo "[packager] FIFO ready — starting dual-rendition HLS packaging"
-  echo "[packager] seg=${SEG_DUR}s  list=${LIST_SIZE}  start=${START_NUMBER}"
+  echo "[packager] seg=${SEG_DUR}s  list=${LIST_SIZE}  gop=${GOP_SIZE}  start=${START_NUMBER}"
 
   ffmpeg \
     -hide_banner \

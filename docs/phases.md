@@ -92,7 +92,7 @@ Deliverables:
 - Browser HLS panel: rendition indicator (`high 1/2` / `low 2/2`) with ABR switch events in timeline
 - New env vars: `ABR_LO_RESOLUTION`, `ABR_LO_BITRATE`
 
-Acceptance test: apply "bandwidth squeeze" profile; hls.js switches to low rendition (event logged), MoQ continues on the rendition hang-watch selects.
+Acceptance test: apply "bandwidth squeeze" profile; hls.js switches to low rendition (event logged), MoQ continues on the rendition the MoQ watch element selects.
 
 ---
 
@@ -153,6 +153,7 @@ Current slice:
 - Event timeline streamed from the registry via SSE
 - Distinct alternate-angle feeds for `cam-a`, `cam-b`, and the standby slate sourced from `/videos/alt-angles`
 - Alternate-angle services register and heartbeat into the registry at runtime
+- Produce/Program alternate-angle feeds use sub-second (500 ms) segments to reduce encoding-side MoQ latency
 
 Planned follow-up:
 - Replace the restart-based republisher with a continuous program pipeline so source cuts happen inside one long-lived downstream broadcast

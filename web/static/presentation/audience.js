@@ -263,7 +263,7 @@ const IMPAIRMENT_CONTEXT = [
     label: "Stale Manifest",
     tone: "bad",
     summary: "Freezes only the HLS control loop while leaving segment delivery and MoQ publication healthy.",
-    hls: "The player polls the manifest about every two seconds. When the manifest is frozen, it keeps seeing the same stale segment list and stalls even though bandwidth and the segment server are healthy. This auto-clears after 30 seconds.",
+    hls: "The player polls the manifest on a sub-second cadence. When the manifest is frozen, it keeps seeing the same stale segment list and stalls even though bandwidth and the segment server are healthy. This auto-clears after 30 seconds.",
     moq: "MoQ is manifest-less. The relay keeps pushing fresh media objects as they are packaged, so there is nothing to poll and nothing to freeze.",
   },
 ];
@@ -841,8 +841,8 @@ function startHlsPlayer() {
   }
 
   hls = new window.Hls({
-    liveSyncDurationCount: 3,
-    liveMaxLatencyDurationCount: 60,
+    liveSyncDurationCount: 6,
+    liveMaxLatencyDurationCount: 240,
     maxLiveSyncPlaybackRate: 1.0,
     maxBufferLength: 10,
     enableWorker: true,
@@ -953,10 +953,10 @@ function startMoqPlayer() {
   function replaceWatchEl() {
     const parent = watch.parentNode;
     if (!parent) return;
-    const next = document.createElement("hang-watch");
+    const next = document.createElement("moq-watch");
     next.id = watch.id;
     next.setAttribute("muted", "");
-    next.setAttribute("latency", watch.getAttribute("latency") || "2000");
+    next.setAttribute("latency", watch.getAttribute("latency") || "1000");
     next.innerHTML = "<canvas></canvas>";
     parent.replaceChild(next, watch);
     watch = next;
@@ -997,11 +997,11 @@ function startMoqPlayer() {
       return;
     }
 
-    const instance = watch.active ? watch.active.peek() : undefined;
-    const broadcast = instance?.broadcast.status ? instance.broadcast.status.peek() : undefined;
+    const activeBroadcast = watch.broadcast?.active ? watch.broadcast.active.peek() : undefined;
+    const broadcast = watch.broadcast?.status ? watch.broadcast.status.peek() : undefined;
     const canvas = watch.querySelector("canvas");
     const hasRenderedFrame =
-      broadcast === "live" && canvas && canvas.width > 1 && canvas.height > 1;
+      Boolean(activeBroadcast) && broadcast === "live" && canvas && canvas.width > 1 && canvas.height > 1;
 
     if (!hasRenderedFrame) return;
 
@@ -1027,8 +1027,8 @@ function startMoqPlayer() {
   }, MOQ_ABR_POLL_MS);
 
   setInterval(() => {
-    const instance = watch.active ? watch.active.peek() : undefined;
-    if (!instance) {
+    const activeBroadcast = watch.broadcast?.active ? watch.broadcast.active.peek() : undefined;
+    if (!activeBroadcast) {
       ref.overlay.classList.remove("hidden");
       ref.status.textContent = "Waiting for relay…";
       ref.playbackState = "connecting";
@@ -1037,8 +1037,8 @@ function startMoqPlayer() {
       return;
     }
 
-    const broadcast = instance.broadcast.status
-      ? instance.broadcast.status.peek()
+    const broadcast = watch.broadcast?.status
+      ? watch.broadcast.status.peek()
       : undefined;
 
     if (broadcast === "live") {
@@ -1302,7 +1302,7 @@ async function bootstrap() {
   initializePresenterShell();
   bindPresenterControls();
 
-  await customElements.whenDefined("hang-watch");
+  await customElements.whenDefined("moq-watch");
   startHlsPlayer();
   startMoqPlayer();
   startDriftMeasurement();

@@ -1,8 +1,8 @@
 // Build script for the MoQ player bundle.
 //
-// @kixelated/hang uses Vite-specific "?worker&url" query imports for audio
-// web workers.  We stub those out (return an empty URL string) because the
-// video source has no audio track, so the worklet never actually fires.
+// Some MoQ watch packages use Vite-specific "?worker&url" query imports for
+// audio web workers. We stub those out (return an empty URL string) because
+// the demo sources are video-only, so the audio worklet never actually fires.
 import * as esbuild from 'esbuild';
 import { mkdirSync, readFileSync } from 'fs';
 
@@ -24,9 +24,8 @@ const workerUrlPlugin = {
   },
 };
 
-// @kixelated/hang 0.7.0 requires priority in the catalog's video and audio
-// objects, but moq-relay 0.10.17 (released ~5 months later) dropped it from
-// moq-mux. Patch both Zod schemas to make priority optional with default 128.
+// Keep a compatibility patch for older catalog schema layouts that still
+// require `priority` in the video and audio objects.
 function patchPriority(contents) {
   // Each catalog file has TWO `priority: z.number()...` lines: one in the
   // backward-compat TrackSchema and one in the main object schema.

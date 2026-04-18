@@ -22,8 +22,20 @@ PIPE="/media/source.pipe"
 VIDEOS_DIR="${VIDEOS_DIR:-/videos}"
 FONTFILE="/usr/share/fonts/dejavu/DejaVuSans-Bold.ttf"
 
-SEG_DUR="${HLS_SEGMENT_DURATION:-2}"
-KEYINT=$(( FPS * SEG_DUR ))
+SEG_DUR="${COMPARE_HLS_SEGMENT_DURATION:-${HLS_SEGMENT_DURATION:-2}}"
+KEYINT=$(
+  awk -v seg="${SEG_DUR}" -v fps="${FPS}" '
+    BEGIN {
+      value = seg * fps
+      if (value < 1) value = 1
+      if (value == int(value)) {
+        printf "%d", value
+      } else {
+        printf "%d", int(value + 0.5)
+      }
+    }
+  '
+)
 
 mkdir -p /media
 

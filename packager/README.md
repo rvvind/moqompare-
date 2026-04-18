@@ -31,8 +31,10 @@ Both services write into the `/media` Docker volume:
 |----------|---------|-------------|
 | `SOURCE_FPS` | `30` | Frame rate of the synthetic source |
 | `SOURCE_RESOLUTION` | `1280x720` | Output resolution |
-| `HLS_SEGMENT_DURATION` | `2` | Seconds per HLS segment |
-| `HLS_LIST_SIZE` | `5` | Number of segments to keep in the manifest |
+| `COMPARE_HLS_SEGMENT_DURATION` | `0.5` | Seconds per HLS segment on the compare/present/fanout path |
+| `COMPARE_HLS_LIST_SIZE` | `120` | Number of segments to keep in the compare-path manifest |
+| `HLS_SEGMENT_DURATION` | `2` | Fallback segment duration when the compare-specific variable is unset |
+| `HLS_LIST_SIZE` | `5` | Fallback manifest length when the compare-specific variable is unset |
 | `LOG_LEVEL` | `info` | Logging verbosity |
 
 ## Phase status

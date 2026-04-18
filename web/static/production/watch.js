@@ -1,21 +1,21 @@
 const MOQ_URL = `http://${window.location.hostname}:4443`;
 
 export async function ensureWatchReady() {
-  await customElements.whenDefined("hang-watch");
+  await customElements.whenDefined("moq-watch");
 }
 
-function buildWatchElement(id, latencyMs = 2000) {
-  const watch = document.createElement("hang-watch");
+function buildWatchElement(id, latency = "real-time") {
+  const watch = document.createElement("moq-watch");
   if (id) watch.id = id;
   watch.setAttribute("muted", "");
   watch.setAttribute("reload", "");
-  watch.setAttribute("latency", String(latencyMs || 2000));
+  watch.setAttribute("latency", String(latency || "real-time"));
   watch.innerHTML = "<canvas></canvas>";
   return watch;
 }
 
-export function retuneWatch(slotEl, currentWatch, streamName, latencyMs = 2000) {
-  const next = buildWatchElement(currentWatch?.id || "", latencyMs);
+export function retuneWatch(slotEl, currentWatch, streamName, latency = "real-time") {
+  const next = buildWatchElement(currentWatch?.id || "", latency);
   if (currentWatch && currentWatch.parentNode === slotEl) {
     slotEl.replaceChild(next, currentWatch);
   } else {
@@ -36,8 +36,10 @@ export function readWatchState(watch) {
     };
   }
 
-  const instance = watch.active ? watch.active.peek() : undefined;
-  if (!instance) {
+  const activeBroadcast = watch.broadcast?.active
+    ? watch.broadcast.active.peek()
+    : undefined;
+  if (!activeBroadcast) {
     return {
       state: "connecting",
       hasFrame: false,
@@ -45,8 +47,8 @@ export function readWatchState(watch) {
     };
   }
 
-  const broadcast = instance.broadcast?.status
-    ? instance.broadcast.status.peek()
+  const broadcast = watch.broadcast?.status
+    ? watch.broadcast.status.peek()
     : undefined;
   const canvas = watch.querySelector("canvas");
   const hasFrame = Boolean(canvas && canvas.width > 1 && canvas.height > 1);

@@ -75,7 +75,7 @@ const IMPAIRMENT_CONTEXT = [
     label: "Stale Manifest",
     tone: "bad",
     summary: "Freezes only the HLS control loop while leaving segment delivery and MoQ publication healthy.",
-    hls: "The player polls the manifest about every two seconds. When the manifest is frozen, it keeps seeing the same stale segment list and stalls even though bandwidth and the segment server are healthy. This auto-clears after 30 seconds.",
+    hls: "The player polls the manifest on a sub-second cadence. When the manifest is frozen, it keeps seeing the same stale segment list and stalls even though bandwidth and the segment server are healthy. This auto-clears after 30 seconds.",
     moq: "MoQ is manifest-less. The relay keeps pushing fresh media objects as they are packaged, so there is nothing to poll and nothing to freeze.",
   },
 ];

@@ -51,8 +51,8 @@ def _seed_streams() -> dict[str, dict]:
             "playback": {
                 "protocol": "moq",
                 "stream_name": "stream_cam_a",
-                "latency_ms": 2000,
-                "note": "Published from the dedicated Camera A alternate-angle feed.",
+                "latency": 500,
+                "note": "Published from the dedicated Camera A alternate-angle feed with a small fixed buffer to smooth bursty HLS-to-MoQ delivery.",
             },
             "republish": {
                 "protocol": "hls",
@@ -76,8 +76,8 @@ def _seed_streams() -> dict[str, dict]:
             "playback": {
                 "protocol": "moq",
                 "stream_name": "stream_cam_b",
-                "latency_ms": 2000,
-                "note": "Published from the dedicated Camera B alternate-angle feed.",
+                "latency": 500,
+                "note": "Published from the dedicated Camera B alternate-angle feed with a small fixed buffer to smooth bursty HLS-to-MoQ delivery.",
             },
             "republish": {
                 "protocol": "hls",
@@ -101,8 +101,8 @@ def _seed_streams() -> dict[str, dict]:
             "playback": {
                 "protocol": "moq",
                 "stream_name": "stream_slate",
-                "latency_ms": 2000,
-                "note": "Publishes the dedicated standby slate feed into the relay for preview and routing.",
+                "latency": 500,
+                "note": "Publishes the dedicated standby slate feed into the relay for preview and routing with a small fixed buffer to smooth bursty HLS-to-MoQ delivery.",
             },
             "republish": {
                 "protocol": "hls",
@@ -122,8 +122,8 @@ def _default_program_route() -> dict:
         "playback": {
             "protocol": "moq",
             "stream_name": "stream_program",
-            "latency_ms": 2000,
-            "note": "Stable backend-owned program broadcast published by the republisher service.",
+            "latency": 750,
+            "note": "Stable backend-owned program broadcast published by the republisher service with a small fixed buffer to smooth bursty HLS-to-MoQ delivery.",
         },
         "route_stream_id": "cam-a",
         "stream_id": "cam-a",

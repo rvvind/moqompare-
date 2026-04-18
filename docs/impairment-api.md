@@ -77,7 +77,7 @@ POST /impair/stale_manifest
 - Clears any existing netem rules first (network is clean), then calls `POST /freeze` on the manifest-proxy.
 - From this point, every `*.m3u8` request served through nginx returns the snapshot that was cached at freeze time — the segment list never advances.
 - After **30 seconds** the controller automatically calls `baseline` (unfreezes, flushes cache).
-- **HLS**: players poll for new segments, receive the same stale list each time, and stall once their buffer drains. On recovery, players resume ~30 s behind the live edge and stay there (no automatic seek-to-live — see [Player configuration](#player-configuration)).
+- **HLS**: players poll for new segments several times per second, receive the same stale list each time, and stall once their buffer drains. On recovery, players resume ~30 s behind the live edge and stay there (no automatic seek-to-live — see [Player configuration](#player-configuration)).
 - **MoQ**: completely unaffected. The relay pushes new objects directly; no manifest is consulted.
 - Response includes `"auto_clear_secs": 30`.
 
@@ -184,11 +184,11 @@ These are relevant if your harness re-embeds the player or modifies hls.js confi
 
 | Setting | Value | Reason |
 |---|---|---|
-| `liveMaxLatencyDurationCount` | `60` (× 2 s segments = 120 s) | Prevents hls.js from auto-seeking to live edge after stale manifest recovery |
+| `liveMaxLatencyDurationCount` | `240` (× 0.5 s segments = 120 s) | Prevents hls.js from auto-seeking to live edge after stale manifest recovery |
 | `maxLiveSyncPlaybackRate` | `1.0` | Disables playback speed-up catch-up; lag stays visible in the UI |
-| `HLS_LIST_SIZE` | `30` (= 60 s of segments) | Manifest retains segments from before the freeze so hls.js can resume without a seek |
+| `COMPARE_HLS_LIST_SIZE` | `120` (= 60 s of segments at 0.5 s each) | Manifest retains segments from before the freeze so hls.js can resume without a seek |
 
-Without these settings, hls.js will seek to the live edge within 12 s of falling behind, making the stale manifest lag invisible.
+Without these settings, hls.js will seek back toward the live edge within seconds of falling behind, making the stale manifest lag much less visible.
 
 ---
 

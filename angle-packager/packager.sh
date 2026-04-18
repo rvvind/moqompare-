@@ -24,13 +24,26 @@ STREAM_TAGS="${ANGLE_TAGS:-camera,alt-angle}"
 RESOLUTION="${ANGLE_RESOLUTION:-1920x1080}"
 FPS="${ANGLE_FPS:-30}"
 BITRATE="${ANGLE_BITRATE:-3500k}"
-SEG_DUR="${HLS_SEGMENT_DURATION:-2}"
-LIST_SIZE="${HLS_LIST_SIZE:-5}"
+SEG_DUR="${ANGLE_HLS_SEGMENT_DURATION:-${HLS_SEGMENT_DURATION:-2}}"
+LIST_SIZE="${ANGLE_HLS_LIST_SIZE:-${HLS_LIST_SIZE:-5}}"
 FONTFILE="/usr/share/fonts/dejavu/DejaVuSans-Bold.ttf"
 PLAYLIST="/tmp/${STREAM_KEY}_source_playlist.txt"
-GOP_SIZE=$(( SEG_DUR * FPS ))
 HLS_FLAGS="delete_segments+append_list+independent_segments"
 HEARTBEAT_PID=""
+
+GOP_SIZE=$(
+  awk -v seg="${SEG_DUR}" -v fps="${FPS}" '
+    BEGIN {
+      value = seg * fps
+      if (value < 1) value = 1
+      if (value == int(value)) {
+        printf "%d", value
+      } else {
+        printf "%d", int(value + 0.5)
+      }
+    }
+  '
+)
 
 if [ -z "${VIDEO_FILE}" ]; then
   echo "[angle-packager:${STREAM_KEY}] ERROR: ANGLE_VIDEO_FILE is required"
@@ -70,7 +83,7 @@ register_stream() {
   ')
 
   PAYLOAD=$(cat <<EOF
-{"id":"${STREAM_KEY}","namespace":"${STREAM_NAMESPACE}","label":"${ANGLE_LABEL}","kind":"camera","summary":"${STREAM_SUMMARY}","status":"healthy","previewable":true,"media_ready":true,"derived_from":["${VIDEO_FILE}"],"tags":${TAGS_JSON},"playback":{"protocol":"moq","stream_name":"${PLAYBACK_STREAM_NAME}","latency_ms":2000,"note":"Published from the dedicated ${ANGLE_LABEL} alternate-angle feed."},"republish":{"protocol":"hls","playlist_url":"${PLAYLIST_URL}","note":"Republisher ingests the dedicated ${ANGLE_LABEL} HLS feed for the stable program broadcast."}}
+{"id":"${STREAM_KEY}","namespace":"${STREAM_NAMESPACE}","label":"${ANGLE_LABEL}","kind":"camera","summary":"${STREAM_SUMMARY}","status":"healthy","previewable":true,"media_ready":true,"derived_from":["${VIDEO_FILE}"],"tags":${TAGS_JSON},"playback":{"protocol":"moq","stream_name":"${PLAYBACK_STREAM_NAME}","latency":500,"note":"Published from the dedicated ${ANGLE_LABEL} alternate-angle feed with a small fixed buffer to smooth bursty HLS-to-MoQ delivery."},"republish":{"protocol":"hls","playlist_url":"${PLAYLIST_URL}","note":"Republisher ingests the dedicated ${ANGLE_LABEL} HLS feed for the stable program broadcast."}}
 EOF
 )
 
@@ -150,6 +163,7 @@ build_playlist
 
 echo "[angle-packager:${STREAM_KEY}] source=${VIDEO_FILE}"
 echo "[angle-packager:${STREAM_KEY}] out=${OUTPUT_DIR} res=${RESOLUTION} fps=${FPS} bitrate=${BITRATE}"
+echo "[angle-packager:${STREAM_KEY}] hls_time=${SEG_DUR}s list=${LIST_SIZE} gop=${GOP_SIZE} frames"
 
 register_stream
 heartbeat_loop &

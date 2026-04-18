@@ -112,7 +112,7 @@ Browser-pushed metrics available at `:9090/metrics` and `:9090/snapshot`. Startu
       └───────────────► relay ────┘
                        │
   web (nginx :3000) ◄──┘
-      │  hls.js player + hang-watch MoQ player
+      │  hls.js player + moq-watch MoQ player
       │  /produce  — production workspace preview
       │  /program  — downstream program monitor
       │  /present  — presentation workspace
@@ -200,6 +200,11 @@ Produce and Program use the dedicated files under `videos/alt-angles/` for `cam-
 
 The standby slate for the production workspace is also sourced from `videos/alt-angles/` and is published continuously as `stream_slate` so the modifier flow can switch to it without waiting for an ad trigger.
 
+The main comparison pipeline and the alternate-angle production feeds now
+default to 500 ms HLS segments. Produce/Program still use slightly larger fixed
+MoQ watch buffers than Compare/Present/Fanout so the production preview path
+stays smooth despite the burstier HLS-to-MoQ publication flow.
+
 If `videos/` is empty, the source falls back to FFmpeg `testsrc2` (animated synthetic test pattern).
 
 ---
@@ -261,10 +266,12 @@ Copy `.env.example` to `.env` and adjust before running `make up`:
 | `SOURCE_FPS` | `30` | Source frame rate |
 | `SOURCE_RESOLUTION` | `1920x1080` | Source resolution |
 | `SOURCE_BITRATE` | `4000k` | Hi-rendition bitrate |
-| `HLS_SEGMENT_DURATION` | `2` | Seconds per HLS segment |
-| `HLS_LIST_SIZE` | `5` | Segments kept in rolling manifest |
+| `COMPARE_HLS_SEGMENT_DURATION` | `0.5` | Compare/Present/Fanout segment duration in seconds |
+| `COMPARE_HLS_LIST_SIZE` | `120` | Compare/Present/Fanout manifest length in segments |
 | `ABR_LO_BITRATE` | `500k` | Lo-rendition bitrate |
 | `ABR_LO_RESOLUTION` | `640x360` | Lo-rendition resolution |
+| `ANGLE_HLS_SEGMENT_DURATION` | `0.5` | Produce/Program alternate-angle segment duration in seconds |
+| `ANGLE_HLS_LIST_SIZE` | `10` | Produce/Program alternate-angle rolling manifest length |
 | `ORIGIN_PORT` | `8080` | HLS origin host port |
 | `RELAY_PORT` | `4443` | MoQ relay host port (QUIC + TCP) |
 | `WEB_PORT` | `3000` | Browser UI host port |
